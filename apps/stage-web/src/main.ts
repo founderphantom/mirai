@@ -15,6 +15,7 @@ import { routes } from 'vue-router/auto-routes'
 import App from './App.vue'
 
 import { i18n } from './modules/i18n'
+import { setupRouteGuards } from './router/guards'
 
 import '@proj-airi/font-cjkfonts-allseto/index.css'
 import '@proj-airi/font-xiaolai/index.css'
@@ -31,6 +32,10 @@ if (import.meta.env.VITE_APP_TARGET_HUGGINGFACE_SPACE)
 else
   router = createRouter({ routes: routeRecords, history: createWebHistory() })
 
+// Setup authentication route guards
+setupRouteGuards(router)
+
+// NProgress for route transitions
 router.beforeEach((to, from) => {
   if (to.path !== from.path)
     NProgress.start()
