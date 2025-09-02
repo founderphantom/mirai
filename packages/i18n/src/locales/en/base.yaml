@@ -1,3 +1,14 @@
+general:
+  cancel: Cancel
+  confirm: Confirm
+  close: Close
+  save: Save
+  delete: Delete
+  back: Back
+  next: Next
+  loading: Loading...
+  error: Error
+  success: Success
 prompt:
   prefix: >
     (from Neko Ayaka) Good morning! You are finally awake.
