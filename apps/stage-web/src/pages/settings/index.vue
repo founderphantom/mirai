@@ -4,19 +4,24 @@ import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
 
+import SignOutDialog from '../../components/auth/SignOutDialog.vue'
 import IconAnimation from '../../components/IconAnimation.vue'
+import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
 const iconAnimationStarted = ref(false)
 const iconAnimation = ref<InstanceType<typeof IconAnimation>>()
 const resolveAnimation = ref<() => void>()
 const { t } = useI18n()
+const { signOut, isAuthenticated } = useAuth()
 
 const animationIcon = ref('')
 const animationPosition = ref('')
 const showAnimationComponent = ref(false)
 const settingsStore = useSettings()
+const showSignOutDialog = ref(false)
 
 function handleAnimationEnded() {
   resolveAnimation.value?.()
@@ -103,6 +108,16 @@ const settings = computed(() => [
     to: '/settings/system',
   },
 ])
+
+async function handleSignOut() {
+  const { error } = await signOut()
+  if (error) {
+    toast.error(t('settings.auth.sign_out_error'))
+  } else {
+    toast.success(t('settings.auth.sign_out_success'))
+  }
+  showSignOutDialog.value = false
+}
 </script>
 
 <template>
@@ -125,6 +140,19 @@ const settings = computed(() => [
         :to="setting.to"
         @click="(e: MouseEvent) => handleIconItemClick(e, setting)"
       />
+      
+      <!-- Sign Out Section -->
+      <div v-if="isAuthenticated" class="mt-8 pt-8 border-t border-neutral-200 dark:border-neutral-700">
+        <div class="flex justify-center">
+          <button
+            class="flex items-center gap-2 px-6 py-3 text-error-500 dark:text-error-400 font-semibold bg-transparent border-2 border-error-500 dark:border-error-400 rounded-xl hover:bg-error-500 dark:hover:bg-error-400 hover:text-white dark:hover:text-white hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-error-500 dark:focus:ring-error-400 focus:ring-offset-2"
+            @click="showSignOutDialog = true"
+          >
+            <div class="i-solar:logout-2-bold-duotone text-lg" />
+            <span>{{ t('settings.auth.sign_out') }}</span>
+          </button>
+        </div>
+      </div>
     </div>
     <IconAnimation
       v-if="showAnimationComponent && !settingsStore.disableTransitions && settingsStore.usePageSpecificTransitions"
@@ -150,6 +178,13 @@ const settings = computed(() => [
     >
       <div v-motion text="60" i-solar:settings-bold-duotone />
     </div>
+    
+    <!-- Sign Out Confirmation Dialog -->
+    <SignOutDialog
+      v-model="showSignOutDialog"
+      @confirm="handleSignOut"
+      @cancel="showSignOutDialog = false"
+    />
   </div>
 </template>
 
