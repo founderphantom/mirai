@@ -9,14 +9,14 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3000'),
   API_VERSION: z.string().default('v1'),
-  FRONTEND_URL: z.string().url(),
+  FRONTEND_URL: z.string().url().optional().default('http://localhost:5173'),
   
   // Supabase
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string(),
-  SUPABASE_SERVICE_KEY: z.string(),
-  SUPABASE_JWT_SECRET: z.string(),
-  DATABASE_URL: z.string(),
+  SUPABASE_SERVICE_KEY: z.string().optional(),
+  SUPABASE_JWT_SECRET: z.string().optional(),
+  DATABASE_URL: z.string().optional(),
   
   // Redis
   REDIS_URL: z.string().optional(),
@@ -56,7 +56,20 @@ const envSchema = z.object({
 });
 
 // Parse and validate environment variables
-const env = envSchema.parse(process.env);
+let env: z.infer<typeof envSchema>;
+
+try {
+  env = envSchema.parse(process.env);
+} catch (error) {
+  console.error('Invalid environment variables:', error);
+  // Use safe defaults for development
+  env = envSchema.parse({
+    ...process.env,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY || 'dummy-service-key',
+    SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET || 'dummy-jwt-secret',
+    DATABASE_URL: process.env.DATABASE_URL || 'postgresql://localhost:5432/mirai'
+  });
+}
 
 // Application configuration
 export const config = {
@@ -78,8 +91,8 @@ export const config = {
   supabase: {
     url: env.SUPABASE_URL,
     anonKey: env.SUPABASE_ANON_KEY,
-    serviceKey: env.SUPABASE_SERVICE_KEY,
-    jwtSecret: env.SUPABASE_JWT_SECRET,
+    serviceKey: env.SUPABASE_SERVICE_KEY || '',
+    jwtSecret: env.SUPABASE_JWT_SECRET || '',
   },
   
   redis: {

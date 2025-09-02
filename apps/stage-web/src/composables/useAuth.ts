@@ -1,199 +1,265 @@
-import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import type { User, Session } from '@supabase/supabase-js'
-import { supabase, authHelpers } from '@/lib/supabase'
+import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { storeToRefs } from 'pinia';
+import { useAuthStore } from '@proj-airi/stage-ui/stores/auth';
+import { authService, LoginCredentials, SignupData } from '@/services/auth.service';
+import { userService } from '@/services/user.service';
+import { useApi } from './useApi';
+import { toast } from 'vue-sonner';
 
-// Global auth state
-const user = ref<User | null>(null)
-const session = ref<Session | null>(null)
-const loading = ref(true)
-const initialized = ref(false)
-
-// Initialize auth state
-async function initializeAuth() {
-  if (initialized.value) return
-  
-  try {
-    // Get initial session
-    const { data: { session: currentSession } } = await supabase.auth.getSession()
-    session.value = currentSession
-    user.value = currentSession?.user ?? null
-    
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange((event, newSession) => {
-      session.value = newSession
-      user.value = newSession?.user ?? null
-      
-      // Handle sign out event - redirect to login
-      if (event === 'SIGNED_OUT' && window.location.pathname !== '/auth/login') {
-        window.location.href = '/auth/login'
-      }
-    })
-    
-    initialized.value = true
-  } catch (error) {
-    console.error('Failed to initialize auth:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
+/**
+ * Composable for authentication operations
+ */
 export function useAuth() {
-  const router = useRouter()
+  const router = useRouter();
+  const authStore = useAuthStore();
+  const { user, isAuthenticated, loading: storeLoading } = storeToRefs(authStore);
+  
+  // Login
+  const {
+    loading: loginLoading,
+    error: loginError,
+    execute: executeLogin,
+  } = useApi(async (credentials: LoginCredentials) => {
+    const response = await authService.login(credentials);
+    
+    // Update auth store with user data
+    authStore.setUser(response.user);
+    
+    // Fetch full user profile
+    const profile = await userService.getProfile();
+    authStore.updateProfile(profile as any);
+    
+    toast.success('Welcome back!');
+    return response;
+  });
+  
+  const login = async (credentials: LoginCredentials) => {
+    const result = await executeLogin(credentials);
+    if (result) {
+      // Redirect to dashboard or previous page
+      const redirect = router.currentRoute.value.query.redirect as string;
+      await router.push(redirect || '/stage');
+    }
+    return result;
+  };
+  
+  // Signup
+  const {
+    loading: signupLoading,
+    error: signupError,
+    execute: executeSignup,
+  } = useApi(async (data: SignupData) => {
+    const response = await authService.signup(data);
+    
+    // Update auth store with user data
+    authStore.setUser(response.user);
+    
+    // Fetch full user profile
+    const profile = await userService.getProfile();
+    authStore.updateProfile(profile as any);
+    
+    toast.success('Account created successfully!');
+    return response;
+  });
+  
+  const signup = async (data: SignupData) => {
+    const result = await executeSignup(data);
+    if (result) {
+      // Redirect to onboarding or dashboard
+      await router.push('/onboarding');
+    }
+    return result;
+  };
+  
+  // Logout
+  const {
+    loading: logoutLoading,
+    execute: executeLogout,
+  } = useApi(async () => {
+    await authService.logout();
+    authStore.clearUser();
+    toast.success('Logged out successfully');
+  });
+  
+  const logout = async () => {
+    await executeLogout();
+    await router.push('/');
+  };
+  
+  // Check session
+  const checkSession = async () => {
+    try {
+      const session = await authService.getSession();
+      if (session.isAuthenticated && session.user) {
+        authStore.setUser(session.user);
+        
+        // Fetch full profile
+        const profile = await userService.getProfile();
+        authStore.updateProfile(profile as any);
+        
+        return true;
+      }
+    } catch (error) {
+      console.error('Session check failed:', error);
+    }
+    return false;
+  };
+  
+  // Password reset
+  const {
+    loading: resetLoading,
+    error: resetError,
+    execute: executeForgotPassword,
+  } = useApi(async (email: string) => {
+    const result = await authService.forgotPassword(email);
+    toast.success('Password reset link sent to your email');
+    return result;
+  });
+  
+  const forgotPassword = async (email: string) => {
+    return executeForgotPassword(email);
+  };
+  
+  // Reset password with token
+  const resetPassword = async (token: string, password: string) => {
+    const result = await authService.resetPassword(token, password);
+    toast.success('Password reset successfully');
+    await router.push('/auth/login');
+    return result;
+  };
+  
+  // OAuth login
+  const oauthLogin = async (provider: string) => {
+    // Construct OAuth URL
+    const redirectUrl = `${window.location.origin}/auth/callback/${provider}`;
+    const oauthUrl = `${import.meta.env.VITE_API_URL}/api/v1/auth/oauth/${provider}?redirect_uri=${encodeURIComponent(redirectUrl)}`;
+    
+    // Redirect to OAuth provider
+    window.location.href = oauthUrl;
+  };
+  
+  // Handle OAuth callback
+  const handleOAuthCallback = async (provider: string, code: string, state?: string) => {
+    try {
+      const response = await authService.oauthCallback(provider, code, state);
+      
+      // Update auth store
+      authStore.setUser(response.user);
+      
+      // Fetch full profile
+      const profile = await userService.getProfile();
+      authStore.updateProfile(profile as any);
+      
+      toast.success('Logged in successfully!');
+      
+      // Redirect to dashboard
+      await router.push('/stage');
+      
+      return response;
+    } catch (error) {
+      toast.error('OAuth login failed');
+      await router.push('/auth/login');
+      throw error;
+    }
+  };
   
   // Computed properties
-  const isAuthenticated = computed(() => !!user.value)
-  const userEmail = computed(() => user.value?.email ?? '')
-  const userName = computed(() => user.value?.user_metadata?.full_name ?? userEmail.value)
-  const userAvatar = computed(() => user.value?.user_metadata?.avatar_url ?? null)
-  
-  // Auth methods
-  const signInWithEmail = async (email: string, password: string, rememberMe = false) => {
-    loading.value = true
-    try {
-      const data = await authHelpers.signInWithEmail(email, password)
-      
-      // Handle remember me by setting session expiry
-      if (!rememberMe && data.session) {
-        // Set session to expire in 24 hours if not remembering
-        await supabase.auth.updateUser({
-          data: { session_duration: 86400 }
-        })
-      }
-      
-      return { data, error: null }
-    } catch (error: any) {
-      return { data: null, error: error.message || 'Failed to sign in' }
-    } finally {
-      loading.value = false
-    }
-  }
-  
-  const signUpWithEmail = async (email: string, password: string) => {
-    loading.value = true
-    try {
-      const data = await authHelpers.signUpWithEmail(email, password)
-      return { data, error: null }
-    } catch (error: any) {
-      return { data: null, error: error.message || 'Failed to sign up' }
-    } finally {
-      loading.value = false
-    }
-  }
-  
-  const signInWithOAuth = async (provider: 'google' | 'discord') => {
-    loading.value = true
-    try {
-      const data = await authHelpers.signInWithOAuth(provider)
-      return { data, error: null }
-    } catch (error: any) {
-      return { data: null, error: error.message || 'Failed to sign in with ' + provider }
-    } finally {
-      loading.value = false
-    }
-  }
-  
-  const signOut = async () => {
-    loading.value = true
-    try {
-      await authHelpers.signOut()
-      await router.push('/auth/login')
-      return { error: null }
-    } catch (error: any) {
-      return { error: error.message || 'Failed to sign out' }
-    } finally {
-      loading.value = false
-    }
-  }
-  
-  const resetPassword = async (email: string) => {
-    loading.value = true
-    try {
-      const data = await authHelpers.resetPassword(email)
-      return { data, error: null }
-    } catch (error: any) {
-      return { data: null, error: error.message || 'Failed to send reset email' }
-    } finally {
-      loading.value = false
-    }
-  }
-  
-  const updatePassword = async (newPassword: string) => {
-    loading.value = true
-    try {
-      const data = await authHelpers.updatePassword(newPassword)
-      return { data, error: null }
-    } catch (error: any) {
-      return { data: null, error: error.message || 'Failed to update password' }
-    } finally {
-      loading.value = false
-    }
-  }
-  
-  // Initialize on first use
-  if (!initialized.value) {
-    initializeAuth()
-  }
+  const isLoading = computed(() => 
+    storeLoading.value || 
+    loginLoading.value || 
+    signupLoading.value || 
+    logoutLoading.value || 
+    resetLoading.value
+  );
   
   return {
     // State
-    user: computed(() => user.value),
-    session: computed(() => session.value),
-    loading: computed(() => loading.value),
+    user,
     isAuthenticated,
-    userEmail,
-    userName,
-    userAvatar,
+    isLoading,
+    loginError,
+    signupError,
+    resetError,
     
     // Methods
-    signInWithEmail,
-    signUpWithEmail,
-    signInWithOAuth,
-    signOut,
+    login,
+    signup,
+    logout,
+    checkSession,
+    forgotPassword,
     resetPassword,
-    updatePassword,
-    initializeAuth,
-  }
+    oauthLogin,
+    handleOAuthCallback,
+  };
 }
 
-// Route guard composable
-export function useAuthGuard() {
-  const router = useRouter()
-  const { isAuthenticated, loading } = useAuth()
+/**
+ * Composable for protected routes
+ */
+export function useRequireAuth(redirectTo: string = '/auth/login') {
+  const router = useRouter();
+  const { isAuthenticated, checkSession } = useAuth();
+  const checking = ref(true);
   
-  const requireAuth = async (redirectTo = '/auth/login') => {
-    // Wait for auth to initialize
-    while (loading.value) {
-      await new Promise(resolve => setTimeout(resolve, 50))
-    }
+  const verify = async () => {
+    checking.value = true;
     
-    if (!isAuthenticated.value) {
-      await router.push({
-        path: redirectTo,
-        query: { redirect: router.currentRoute.value.fullPath }
-      })
-      return false
+    try {
+      if (!isAuthenticated.value) {
+        const hasSession = await checkSession();
+        
+        if (!hasSession) {
+          // Save current route for redirect after login
+          const currentRoute = router.currentRoute.value;
+          await router.push({
+            path: redirectTo,
+            query: { redirect: currentRoute.fullPath },
+          });
+        }
+      }
+    } finally {
+      checking.value = false;
     }
-    
-    return true
-  }
+  };
   
-  const requireGuest = async (redirectTo = '/dashboard') => {
-    // Wait for auth to initialize
-    while (loading.value) {
-      await new Promise(resolve => setTimeout(resolve, 50))
-    }
-    
-    if (isAuthenticated.value) {
-      await router.push(redirectTo)
-      return false
-    }
-    
-    return true
-  }
+  // Check on mount
+  verify();
   
   return {
-    requireAuth,
-    requireGuest,
-  }
+    isAuthenticated,
+    checking,
+    verify,
+  };
+}
+
+/**
+ * Composable for guest-only routes
+ */
+export function useGuestOnly(redirectTo: string = '/stage') {
+  const router = useRouter();
+  const { isAuthenticated, checkSession } = useAuth();
+  const checking = ref(true);
+  
+  const verify = async () => {
+    checking.value = true;
+    
+    try {
+      const hasSession = await checkSession();
+      
+      if (hasSession) {
+        await router.push(redirectTo);
+      }
+    } finally {
+      checking.value = false;
+    }
+  };
+  
+  // Check on mount
+  verify();
+  
+  return {
+    isAuthenticated,
+    checking,
+  };
 }
