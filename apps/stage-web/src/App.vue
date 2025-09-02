@@ -60,7 +60,8 @@ watch(settings.themeColorsHueDynamic, () => {
 
 // Initialize first-time setup check when app mounts
 onMounted(async () => {
-  onboardingStore.initializeSetupCheck()
+  // Disabled onboarding for SaaS mode - API keys are managed server-side
+  // onboardingStore.initializeSetupCheck()
 
   await displayModelsStore.loadDisplayModelsFromIndexedDB()
   await settingsStore.initializeStageModel()
@@ -97,12 +98,12 @@ function handleSetupSkipped() {
     <Toaster />
   </ToasterRoot>
 
-  <!-- First Time Setup Dialog -->
-  <OnboardingDialog
+  <!-- First Time Setup Dialog - Disabled for SaaS mode -->
+  <!-- <OnboardingDialog
     v-model="shouldShowSetup"
     @configured="handleSetupConfigured"
     @skipped="handleSetupSkipped"
-  />
+  /> -->
 </template>
 
 <style>
