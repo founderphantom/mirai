@@ -1,0 +1,35 @@
+title: Dashboard
+welcome: Welcome to AIRI!
+subtitle: You have successfully authenticated. This is your dashboard.
+
+# Empty state
+empty_state:
+  title: No conversations yet
+  description: Start a new chat with AIRI to begin your journey together
+
+# Chat actions
+start_new_chat: Start New Chat
+new_chat_started: New chat started
+your_chats: Your Chats
+
+# Stats cards
+stats:
+  conversations:
+    title: Conversations
+    description: Start chatting with AIRI
+  gaming_sessions:
+    title: Gaming Sessions
+    description: Play games together
+  companions:
+    title: Companions
+    description: Customize your AI companion
+
+# Authentication info
+auth_details:
+  title: Authentication Details
+  user_id: User ID
+  email: Email
+  session_active: Session Active
+  yes: Yes
+  no: No
+  not_available: N/A
