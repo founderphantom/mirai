@@ -20,9 +20,14 @@ async function initializeAuth() {
     user.value = currentSession?.user ?? null
     
     // Listen for auth changes
-    supabase.auth.onAuthStateChange((_event, newSession) => {
+    supabase.auth.onAuthStateChange((event, newSession) => {
       session.value = newSession
       user.value = newSession?.user ?? null
+      
+      // Handle sign out event - redirect to login
+      if (event === 'SIGNED_OUT' && window.location.pathname !== '/auth/login') {
+        window.location.href = '/auth/login'
+      }
     })
     
     initialized.value = true
