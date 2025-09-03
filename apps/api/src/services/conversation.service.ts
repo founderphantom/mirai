@@ -12,8 +12,8 @@ export class ConversationService {
    * Create a new conversation
    */
   async createConversation(data: ConversationInsert): Promise<Conversation> {
-    const { data: conversation, error } = await supabase
-      .from('conversations')
+    const { data: conversation, error } = await (supabase
+      .from('conversations') as any)
       .insert({
         ...data,
         total_tokens: data.total_tokens || 0,
@@ -37,8 +37,8 @@ export class ConversationService {
    * Get a conversation by ID
    */
   async getConversation(conversationId: string, userId: string): Promise<Conversation | null> {
-    const { data, error } = await supabase
-      .from('conversations')
+    const { data, error } = await (supabase
+      .from('conversations') as any)
       .select('*')
       .eq('id', conversationId)
       .eq('user_id', userId)
@@ -65,8 +65,8 @@ export class ConversationService {
   ): Promise<Conversation[]> {
     const { limit = 20, offset = 0, includeArchived = false, onlyStarred = false } = options;
 
-    let query = supabase
-      .from('conversations')
+    let query = (supabase
+      .from('conversations') as any)
       .select('*')
       .eq('user_id', userId)
       .order('last_message_at', { ascending: false, nullsFirst: false })
@@ -98,12 +98,12 @@ export class ConversationService {
     limit: number = 20,
     offset: number = 0
   ): Promise<ConversationWithLastMessage[]> {
-    const { data, error } = await supabase
+    const { data, error } = await ((supabase as any)
       .rpc('get_conversations_with_last_message', {
         p_user_id: userId,
         p_limit: limit,
         p_offset: offset
-      });
+      }));
 
     if (error) {
       throw new Error(`Failed to fetch conversations with last message: ${error.message}`);
@@ -120,8 +120,8 @@ export class ConversationService {
     userId: string,
     updates: ConversationUpdate
   ): Promise<Conversation> {
-    const { data, error } = await supabase
-      .from('conversations')
+    const { data, error } = await (supabase
+      .from('conversations') as any)
       .update({
         ...updates,
         updated_at: new Date().toISOString()
@@ -173,8 +173,8 @@ export class ConversationService {
    */
   async deleteConversation(conversationId: string, userId: string): Promise<void> {
     // First delete all messages in the conversation
-    const { error: messagesError } = await supabase
-      .from('chat_messages')
+    const { error: messagesError } = await (supabase
+      .from('chat_messages') as any)
       .delete()
       .eq('conversation_id', conversationId);
 
@@ -183,8 +183,8 @@ export class ConversationService {
     }
 
     // Then delete the conversation
-    const { error } = await supabase
-      .from('conversations')
+    const { error } = await (supabase
+      .from('conversations') as any)
       .delete()
       .eq('id', conversationId)
       .eq('user_id', userId);
@@ -234,8 +234,8 @@ export class ConversationService {
     query: string,
     limit: number = 20
   ): Promise<Conversation[]> {
-    const { data, error } = await supabase
-      .from('conversations')
+    const { data, error } = await (supabase
+      .from('conversations') as any)
       .select('*')
       .eq('user_id', userId)
       .ilike('title', `%${query}%`)
@@ -259,8 +259,8 @@ export class ConversationService {
     totalTokens: number;
     totalMessages: number;
   }> {
-    const { data, error } = await supabase
-      .from('conversations')
+    const { data, error } = await (supabase
+      .from('conversations') as any)
       .select('is_starred, is_archived, total_tokens, message_count')
       .eq('user_id', userId);
 
@@ -311,8 +311,8 @@ export class ConversationService {
     });
 
     // Copy messages to new conversation
-    const { data: messages, error: fetchError } = await supabase
-      .from('chat_messages')
+    const { data: messages, error: fetchError } = await (supabase
+      .from('chat_messages') as any)
       .select('*')
       .eq('conversation_id', conversationId)
       .is('deleted_at', null)
@@ -323,7 +323,7 @@ export class ConversationService {
     }
 
     if (messages && messages.length > 0) {
-      const messagesToInsert = messages.map(msg => ({
+      const messagesToInsert = messages.map((msg: any) => ({
         conversation_id: newConversation.id,
         role: msg.role,
         content: msg.content,
@@ -337,8 +337,8 @@ export class ConversationService {
         metadata: msg.metadata
       }));
 
-      const { error: insertError } = await supabase
-        .from('chat_messages')
+      const { error: insertError } = await (supabase
+      .from('chat_messages') as any)
         .insert(messagesToInsert);
 
       if (insertError) {

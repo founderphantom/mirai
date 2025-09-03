@@ -33,8 +33,8 @@ export class AuthService {
   async signUp(email: string, password: string, metadata?: any) {
     try {
       // Check if user already exists
-      const { data: existingUser } = await supabaseAdmin
-        .from('user_profiles')
+      const { data: existingUser } = await (supabaseAdmin
+      .from('user_profiles') as any)
         .select('id')
         .eq('email', email)
         .single();
@@ -123,8 +123,8 @@ export class AuthService {
       }
 
       // Update last message at (used for tracking activity)
-      await supabaseAdmin
-        .from('user_profiles')
+      await (supabaseAdmin
+      .from('user_profiles') as any)
         .update({ 
           last_message_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -255,8 +255,8 @@ export class AuthService {
       }
 
       // Create notification
-      const { data: profile } = await supabaseAdmin
-        .from('user_profiles')
+      const { data: profile } = await (supabaseAdmin
+      .from('user_profiles') as any)
         .select('id')
         .eq('email', email)
         .single();
@@ -330,8 +330,8 @@ export class AuthService {
         ? new Date(Date.now() + expiresIn).toISOString()
         : null;
 
-      const { data, error } = await supabaseAdmin
-        .from('api_keys')
+      const { data, error } = await (supabaseAdmin
+      .from('api_keys') as any)
         .insert({
           user_id: userId,
           name,
@@ -363,8 +363,8 @@ export class AuthService {
   // Helper: Create notification
   private async createNotification(userId: string, type: string, title: string, message: string) {
     try {
-      await supabaseAdmin
-        .from('notifications')
+      await (supabaseAdmin
+      .from('notifications') as any)
         .insert({
           user_id: userId,
           type,

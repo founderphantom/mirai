@@ -35,25 +35,30 @@ async function getConversations(req: AuthenticatedRequest, res: NextApiResponse)
 
   try {
     // Use optimized RPC function to get conversations with last message
-    const conversations = await dbHelpers.getConversationsWithLastMessage(
+    const conversations: any[] = await dbHelpers.getConversationsWithLastMessage(
       req.user!.id,
       limit as number,
       offset,
-      include_archived === 'true' || include_archived === true
+      include_archived === 'true'
     );
 
     // If starred_only is requested, filter the results
     let filteredConversations = conversations;
-    if (starred_only === 'true' || starred_only === true) {
+    if (starred_only === 'true') {
       filteredConversations = conversations.filter((conv: any) => conv.is_starred);
     }
 
     // Get total count for pagination
-    const { count } = await supabaseAdmin
-      .from('conversations')
+    let countQuery = (supabaseAdmin
+      .from('conversations') as any)
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', req.user!.id)
-      .eq('is_archived', include_archived === 'true' ? undefined : false);
+      .eq('user_id', req.user!.id);
+    
+    if (include_archived !== 'true') {
+      countQuery = countQuery.eq('is_archived', false);
+    }
+    
+    const { count } = await countQuery;
 
     // Format the response with additional computed fields
     const formattedConversations = filteredConversations.map((conv: any) => ({
@@ -113,7 +118,7 @@ async function createConversation(req: AuthenticatedRequest, res: NextApiRespons
 
   try {
     // Create conversation with all optional parameters
-    const conversation = await dbHelpers.createConversation(
+    const conversation: any = await dbHelpers.createConversation(
       req.user!.id,
       title || 'New Conversation',
       model_id || 'gpt-3.5-turbo',

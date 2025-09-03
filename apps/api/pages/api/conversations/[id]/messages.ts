@@ -50,7 +50,7 @@ async function getMessages(
 
   try {
     // Use optimized RPC function for better performance
-    const messages = await dbHelpers.getConversationMessagesRPC(
+    const messages: any[] = await dbHelpers.getConversationMessagesRPC(
       conversationId,
       req.user!.id,
       limit as number,
@@ -58,14 +58,14 @@ async function getMessages(
     );
 
     // Get total count for pagination
-    const { count } = await supabaseAdmin
-      .from('chat_messages')
+    const { count } = await (supabaseAdmin
+      .from('chat_messages') as any)
       .select('*', { count: 'exact', head: true })
       .eq('conversation_id', conversationId)
       .is('deleted_at', null);
 
     // Format messages with proper field names
-    const formattedMessages = messages.map((msg: any) => ({
+    const formattedMessages = messages?.map((msg: any) => ({
       id: msg.message_id,
       conversation_id: conversationId,
       role: msg.role,
@@ -148,8 +148,8 @@ async function sendMessage(
     if (cachedContext) {
       messages = cachedContext;
     } else {
-      const previousMessages = await dbHelpers.getConversationMessages(conversation.id, 20);
-      messages = previousMessages.map(msg => ({
+      const previousMessages: any[] = await dbHelpers.getConversationMessages(conversation.id, 20);
+      messages = previousMessages.map((msg: any) => ({
         role: msg.role as 'system' | 'user' | 'assistant',
         content: msg.content,
       }));

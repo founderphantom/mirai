@@ -149,8 +149,8 @@ export class StripeService {
   async createBillingPortalSession(userId: string, returnUrl: string) {
     try {
       // Get customer ID
-      const { data: subscription } = await (supabaseAdmin
-        .from('subscriptions') as any)
+      const { data: subscription } = await supabaseAdmin
+        .from('subscriptions')
         .select('stripe_customer_id')
         .eq('user_id', userId)
         .single();
@@ -175,8 +175,8 @@ export class StripeService {
   async cancelSubscription(userId: string, immediately = false) {
     try {
       // Get subscription
-      const { data: subscriptionData } = await (supabaseAdmin
-        .from('subscriptions') as any)
+      const { data: subscriptionData } = await supabaseAdmin
+        .from('subscriptions')
         .select('stripe_subscription_id')
         .eq('user_id', userId)
         .eq('status', 'active')
@@ -200,8 +200,8 @@ export class StripeService {
       }
 
       // Update database
-      await (supabaseAdmin
-        .from('subscriptions') as any)
+      await supabaseAdmin
+        .from('subscriptions')
         .update({
           status: immediately ? 'canceled' : 'active',
           cancel_at: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
@@ -221,8 +221,8 @@ export class StripeService {
   async resumeSubscription(userId: string) {
     try {
       // Get subscription
-      const { data: subscriptionData } = await (supabaseAdmin
-        .from('subscriptions') as any)
+      const { data: subscriptionData } = await supabaseAdmin
+        .from('subscriptions')
         .select('stripe_subscription_id')
         .eq('user_id', userId)
         .single();
@@ -240,8 +240,8 @@ export class StripeService {
       );
 
       // Update database
-      await (supabaseAdmin
-        .from('subscriptions') as any)
+      await supabaseAdmin
+        .from('subscriptions')
         .update({
           cancel_at: null,
           updated_at: new Date().toISOString(),
@@ -304,8 +304,8 @@ export class StripeService {
     else if (priceId === PRICE_IDS.enterprise) planId = 'enterprise';
 
     // Create or update subscription record
-    await (supabaseAdmin
-      .from('subscriptions') as any)
+    await supabaseAdmin
+      .from('subscriptions')
       .upsert({
         user_id: userId,
         stripe_customer_id: session.customer as string,
@@ -319,8 +319,8 @@ export class StripeService {
       });
 
     // Create notification
-    await (supabaseAdmin
-      .from('notifications') as any)
+    await supabaseAdmin
+      .from('notifications')
       .insert({
         user_id: userId,
         type: 'subscription_created',
@@ -342,8 +342,8 @@ export class StripeService {
     if (priceId === PRICE_IDS.pro) planId = 'pro';
     else if (priceId === PRICE_IDS.enterprise) planId = 'enterprise';
 
-    await (supabaseAdmin
-      .from('subscriptions') as any)
+    await supabaseAdmin
+      .from('subscriptions')
       .update({
         plan_id: planId,
         status: subscription.status as any,
@@ -360,8 +360,8 @@ export class StripeService {
     const userId = subscription.metadata?.user_id;
     if (!userId) return;
 
-    await (supabaseAdmin
-      .from('subscriptions') as any)
+    await supabaseAdmin
+      .from('subscriptions')
       .update({
         status: 'canceled',
         canceled_at: new Date().toISOString(),
@@ -370,8 +370,8 @@ export class StripeService {
       .eq('stripe_subscription_id', subscription.id);
 
     // Create notification
-    await (supabaseAdmin
-      .from('notifications') as any)
+    await supabaseAdmin
+      .from('notifications')
       .insert({
         user_id: userId,
         type: 'subscription_canceled',
@@ -386,8 +386,8 @@ export class StripeService {
     const customerId = invoice.customer as string;
     
     // Get user from customer ID
-    const { data: subscription } = await (supabaseAdmin
-      .from('subscriptions') as any)
+    const { data: subscription } = await supabaseAdmin
+      .from('subscriptions')
       .select('user_id')
       .eq('stripe_customer_id', customerId)
       .single();
@@ -395,8 +395,8 @@ export class StripeService {
     if (!subscription) return;
 
     // Log payment
-    await (supabaseAdmin
-      .from('payments') as any)
+    await supabaseAdmin
+      .from('payments')
       .insert({
         user_id: subscription.user_id,
         stripe_invoice_id: invoice.id,
@@ -412,8 +412,8 @@ export class StripeService {
     const customerId = invoice.customer as string;
     
     // Get user from customer ID
-    const { data: subscription } = await (supabaseAdmin
-      .from('subscriptions') as any)
+    const { data: subscription } = await supabaseAdmin
+      .from('subscriptions')
       .select('user_id')
       .eq('stripe_customer_id', customerId)
       .single();
@@ -421,8 +421,8 @@ export class StripeService {
     if (!subscription) return;
 
     // Update subscription status
-    await (supabaseAdmin
-      .from('subscriptions') as any)
+    await supabaseAdmin
+      .from('subscriptions')
       .update({
         status: 'past_due',
         updated_at: new Date().toISOString(),
@@ -430,8 +430,8 @@ export class StripeService {
       .eq('user_id', subscription.user_id);
 
     // Create notification
-    await (supabaseAdmin
-      .from('notifications') as any)
+    await supabaseAdmin
+      .from('notifications')
       .insert({
         user_id: subscription.user_id,
         type: 'payment_failed',

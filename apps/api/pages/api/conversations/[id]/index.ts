@@ -87,7 +87,7 @@ async function getConversation(
 
     // Combine all data
     const fullConversation = {
-      ...conversation,
+      ...(conversation as object),
       message_count: messageCount || 0,
       usage_summary: summary,
     };
@@ -142,14 +142,14 @@ async function updateConversation(
         .single();
       
       conversationUpdates.settings = {
-        ...(existing?.settings || {}),
+        ...((existing as any)?.settings || {}),
         ...updates.settings,
       };
     }
 
     // Update the conversation
-    const { data: updatedConversation, error } = await supabaseAdmin
-      .from('conversations')
+    const { data: updatedConversation, error } = await (supabaseAdmin
+      .from('conversations') as any)
       .update(conversationUpdates)
       .eq('id', conversationId)
       .eq('user_id', req.user!.id)
@@ -162,7 +162,7 @@ async function updateConversation(
     await dbHelpers.logApiRequest(
       req.user!.id,
       `/api/conversations/${conversationId}`,
-      req.method,
+      req.method || 'PATCH',
       200
     );
 
@@ -176,7 +176,7 @@ async function updateConversation(
     await dbHelpers.logApiRequest(
       req.user!.id,
       `/api/conversations/${conversationId}`,
-      req.method,
+      req.method || 'PATCH',
       500
     );
 
@@ -195,8 +195,8 @@ async function deleteConversation(
 ) {
   try {
     // Instead of hard delete, we archive the conversation
-    const { data: archivedConversation, error } = await supabaseAdmin
-      .from('conversations')
+    const { data: archivedConversation, error } = await (supabaseAdmin
+      .from('conversations') as any)
       .update({
         is_archived: true,
         updated_at: new Date().toISOString(),
@@ -209,8 +209,8 @@ async function deleteConversation(
     if (error) throw error;
 
     // Soft delete all messages in the conversation
-    await supabaseAdmin
-      .from('chat_messages')
+    await (supabaseAdmin
+      .from('chat_messages') as any)
       .update({
         deleted_at: new Date().toISOString(),
       })

@@ -54,8 +54,8 @@ export class UsageService {
       data.cost = cost.totalCost;
     }
 
-    const { data: log, error } = await supabase
-      .from('usage_logs')
+    const { data: log, error } = await (supabase
+      .from('usage_logs') as any)
       .insert({
         ...data,
         created_at: new Date().toISOString()
@@ -99,8 +99,8 @@ export class UsageService {
     const today = new Date().toISOString().split('T')[0];
 
     // Check if aggregate exists for today
-    const { data: existing } = await supabase
-      .from('usage_daily_aggregates')
+    const { data: existing } = await (supabase
+      .from('usage_daily_aggregates') as any)
       .select('*')
       .eq('user_id', userId)
       .eq('date', today)
@@ -118,8 +118,8 @@ export class UsageService {
         providersUsed[log.provider] = (providersUsed[log.provider] || 0) + 1;
       }
 
-      await supabase
-        .from('usage_daily_aggregates')
+      await (supabase
+      .from('usage_daily_aggregates') as any)
         .update({
           total_messages: existing.total_messages + 1,
           total_tokens: existing.total_tokens + log.total_tokens,
@@ -141,8 +141,8 @@ export class UsageService {
         providersUsed[log.provider] = 1;
       }
 
-      await supabase
-        .from('usage_daily_aggregates')
+      await (supabase
+      .from('usage_daily_aggregates') as any)
         .insert({
           user_id: userId,
           date: today,
@@ -174,8 +174,8 @@ export class UsageService {
       offset = 0
     } = options;
 
-    const { data, error } = await supabase
-      .from('usage_logs')
+    const { data, error } = await (supabase
+      .from('usage_logs') as any)
       .select('*')
       .eq('user_id', userId)
       .gte('created_at', startDate)
@@ -198,12 +198,12 @@ export class UsageService {
     startDate: string,
     endDate: string
   ): Promise<UsageSummary> {
-    const { data, error } = await supabase
+    const { data, error } = await ((supabase as any)
       .rpc('get_user_usage_summary', {
         p_user_id: userId,
         p_start_date: startDate,
         p_end_date: endDate
-      });
+      }));
 
     if (error) {
       throw new Error(`Failed to fetch usage summary: ${error.message}`);
@@ -220,8 +220,8 @@ export class UsageService {
     startDate: string,
     endDate: string
   ): Promise<any[]> {
-    const { data, error } = await supabase
-      .from('usage_daily_aggregates')
+    const { data, error } = await (supabase
+      .from('usage_daily_aggregates') as any)
       .select('*')
       .eq('user_id', userId)
       .gte('date', startDate)
@@ -253,8 +253,8 @@ export class UsageService {
     endOfMonth.setDate(0);
     endOfMonth.setHours(23, 59, 59, 999);
 
-    const { data, error } = await supabase
-      .from('usage_logs')
+    const { data, error } = await (supabase
+      .from('usage_logs') as any)
       .select('total_tokens, cost, model')
       .eq('user_id', userId)
       .gte('created_at', startOfMonth.toISOString())
@@ -311,8 +311,8 @@ export class UsageService {
   }> {
     const windowStart = new Date(Date.now() - window * 1000);
 
-    const { data, error } = await supabase
-      .from('usage_logs')
+    const { data, error } = await (supabase
+      .from('usage_logs') as any)
       .select('id')
       .eq('user_id', userId)
       .eq('action', action)
@@ -346,8 +346,8 @@ export class UsageService {
     messageCount: number;
     averageTokensPerMessage: number;
   }>> {
-    const { data, error } = await supabase
-      .from('usage_logs')
+    const { data, error } = await (supabase
+      .from('usage_logs') as any)
       .select('provider, total_tokens, cost')
       .eq('user_id', userId)
       .gte('created_at', startDate)
@@ -419,8 +419,8 @@ export class UsageService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
-    const { data, error } = await supabase
-      .from('usage_logs')
+    const { data, error } = await (supabase
+      .from('usage_logs') as any)
       .delete()
       .lt('created_at', cutoffDate.toISOString())
       .select();

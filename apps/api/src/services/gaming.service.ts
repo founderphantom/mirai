@@ -21,8 +21,8 @@ export class GamingService {
       // Here you would integrate with actual Minecraft server API
       // For now, we'll simulate the session creation
       
-      const session = await supabaseAdmin
-        .from('gaming_sessions')
+      const session = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .insert({
           user_id: userId,
           game: 'minecraft',
@@ -61,8 +61,8 @@ export class GamingService {
       // Here you would integrate with Roblox API
       // For now, we'll simulate the session creation
       
-      const session = await supabaseAdmin
-        .from('gaming_sessions')
+      const session = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .insert({
           user_id: userId,
           game: 'roblox',
@@ -95,8 +95,8 @@ export class GamingService {
       // Here you would integrate with Fortnite/Epic Games API
       // For now, we'll simulate the session creation
       
-      const session = await supabaseAdmin
-        .from('gaming_sessions')
+      const session = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .insert({
           user_id: userId,
           game: 'fortnite',
@@ -124,8 +124,8 @@ export class GamingService {
   // Get session by ID
   async getSession(sessionId: string, userId: string): Promise<GamingSession | null> {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('gaming_sessions')
+      const { data, error } = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .select('*')
         .eq('id', sessionId)
         .eq('user_id', userId)
@@ -142,8 +142,8 @@ export class GamingService {
   // Get active sessions for user
   async getActiveSessions(userId: string): Promise<GamingSession[]> {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('gaming_sessions')
+      const { data, error } = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'active')
@@ -160,8 +160,8 @@ export class GamingService {
   // End session
   async endSession(sessionId: string, userId: string): Promise<boolean> {
     try {
-      const { error } = await supabaseAdmin
-        .from('gaming_sessions')
+      const { error } = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .update({
           status: 'ended',
           ended_at: new Date().toISOString(),
@@ -187,8 +187,8 @@ export class GamingService {
   async sendGameCommand(sessionId: string, command: string, params?: any): Promise<any> {
     try {
       // Get session
-      const { data: session, error } = await supabaseAdmin
-        .from('gaming_sessions')
+      const { data: session, error } = await (supabaseAdmin
+      .from('gaming_sessions') as any)
         .select('*')
         .eq('session_id', sessionId)
         .eq('status', 'active')
@@ -210,8 +210,8 @@ export class GamingService {
       };
 
       // Log command
-      await supabaseAdmin
-        .from('game_commands')
+      await (supabaseAdmin
+      .from('game_commands') as any)
         .insert(commandLog);
 
       return {
@@ -249,7 +249,7 @@ export class GamingService {
         recent_sessions: [] as any[],
       };
 
-      sessions?.forEach(session => {
+      sessions?.forEach((session: any) => {
         // Calculate playtime
         if (session.started_at && session.ended_at) {
           const duration = new Date(session.ended_at).getTime() - new Date(session.started_at).getTime();
@@ -283,8 +283,8 @@ export class GamingService {
       };
 
       // Log AI action
-      await supabaseAdmin
-        .from('ai_game_actions')
+      await (supabaseAdmin
+      .from('ai_game_actions') as any)
         .insert({
           session_id: sessionId,
           action,

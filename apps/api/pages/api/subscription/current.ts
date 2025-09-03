@@ -11,8 +11,8 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 
   try {
     // Get user's subscription
-    const { data: subscription, error } = await supabaseAdmin
-      .from('subscriptions')
+    const { data: subscription, error } = await (supabaseAdmin
+      .from('subscriptions') as any)
       .select('*')
       .eq('user_id', req.user!.id)
       .eq('status', 'active')
@@ -31,22 +31,22 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
 
     // Get tier features
-    const tierFeatures = SUBSCRIPTION_TIERS[subscription.plan_id as keyof typeof SUBSCRIPTION_TIERS];
+    const tierFeatures = SUBSCRIPTION_TIERS[(subscription as any).plan_id as keyof typeof SUBSCRIPTION_TIERS];
 
     // Get usage for current period
-    const currentPeriodStart = new Date(subscription.current_period_start);
-    const { data: usage } = await supabaseAdmin
-      .from('usage_metrics')
+    const currentPeriodStart = new Date((subscription as any).current_period_start);
+    const { data: usage } = await (supabaseAdmin
+      .from('usage_metrics') as any)
       .select('tokens_used')
       .eq('user_id', req.user!.id)
       .gte('timestamp', currentPeriodStart.toISOString());
 
-    const totalTokens = usage?.reduce((sum, record) => sum + record.tokens_used, 0) || 0;
+    const totalTokens = usage?.reduce((sum: number, record: any) => sum + record.tokens_used, 0) || 0;
 
     res.status(200).json({
       success: true,
       data: {
-        ...subscription,
+        ...(subscription as any),
         features: tierFeatures?.features,
         usage: {
           tokens: totalTokens,

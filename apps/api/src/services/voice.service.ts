@@ -118,7 +118,7 @@ export class VoiceService {
 
     // Create form data
     const formData = new FormData();
-    const blob = new Blob([audioBuffer], { type: 'audio/wav' });
+    const blob = new Blob([audioBuffer as any], { type: 'audio/wav' });
     formData.append('file', blob, 'audio.wav');
     formData.append('model', 'whisper-1');
     if (language !== 'auto') {
@@ -167,8 +167,8 @@ export class VoiceService {
   // Track voice usage
   async trackVoiceUsage(userId: string, type: 'tts' | 'stt', duration: number): Promise<void> {
     try {
-      await supabaseAdmin
-        .from('voice_usage')
+      await (supabaseAdmin
+      .from('voice_usage') as any)
         .insert({
           user_id: userId,
           type,

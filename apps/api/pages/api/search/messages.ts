@@ -45,7 +45,7 @@ async function searchMessages(req: AuthenticatedRequest, res: NextApiResponse) {
 
   try {
     // Use the RPC function for full-text search
-    const searchResults = await dbHelpers.searchMessages(
+    const searchResults: any[] = await dbHelpers.searchMessages(
       req.user!.id,
       searchQuery,
       Number(limit),
@@ -73,7 +73,7 @@ async function searchMessages(req: AuthenticatedRequest, res: NextApiResponse) {
         };
 
         // Add highlighted content if requested
-        if (highlight === 'true' || highlight === true) {
+        if (highlight === 'true') {
           // Simple highlighting - wrap search terms in <mark> tags
           const searchTerms = searchQuery.toLowerCase().split(' ');
           let highlightedContent = result.content;
@@ -97,10 +97,10 @@ async function searchMessages(req: AuthenticatedRequest, res: NextApiResponse) {
         }
 
         // Add context messages if requested
-        if ((include_context === 'true' || include_context === true) && result.conversation_id) {
+        if (include_context === 'true' && result.conversation_id) {
           try {
             // Get 2 messages before and after the matched message
-            const contextMessages = await dbHelpers.getConversationMessagesRPC(
+            const contextMessages: any[] = await dbHelpers.getConversationMessagesRPC(
               result.conversation_id,
               req.user!.id,
               5
