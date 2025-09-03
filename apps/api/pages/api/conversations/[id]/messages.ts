@@ -45,22 +45,48 @@ async function getMessages(
     validate(schemas.pagination)(req, res, resolve)
   );
 
-  const { page = 1, limit = 50 } = req.query;
+  const { page = 1, limit = 50, before_id } = req.query;
   const offset = ((page as number) - 1) * (limit as number);
 
   try {
-    const { data: messages, error, count } = await supabaseAdmin
-      .from('messages')
-      .select('*', { count: 'exact' })
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .range(offset, offset + (limit as number) - 1);
+    // Use optimized RPC function for better performance
+    const messages = await dbHelpers.getConversationMessagesRPC(
+      conversationId,
+      req.user!.id,
+      limit as number,
+      before_id as string
+    );
 
-    if (error) throw error;
+    // Get total count for pagination
+    const { count } = await supabaseAdmin
+      .from('chat_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('conversation_id', conversationId)
+      .is('deleted_at', null);
+
+    // Format messages with proper field names
+    const formattedMessages = messages.map((msg: any) => ({
+      id: msg.message_id,
+      conversation_id: conversationId,
+      role: msg.role,
+      content: msg.content,
+      content_type: msg.content_type,
+      attachments: msg.attachments,
+      model_id: msg.model_id,
+      provider_id: msg.provider_id,
+      tokens: {
+        prompt: msg.prompt_tokens || 0,
+        completion: msg.completion_tokens || 0,
+        total: msg.total_tokens || 0,
+      },
+      rating: msg.rating,
+      feedback: msg.feedback,
+      created_at: msg.created_at,
+    }));
 
     res.status(200).json({
       success: true,
-      data: messages,
+      data: formattedMessages,
       pagination: {
         page: page as number,
         limit: limit as number,
@@ -69,6 +95,7 @@ async function getMessages(
       },
     });
   } catch (error: any) {
+    console.error('Get messages error:', error);
     res.status(500).json({
       error: {
         message: error.message || 'Failed to fetch messages',
@@ -101,11 +128,17 @@ async function sendMessage(
       });
     }
 
-    // Save user message
+    // Save user message with all required fields
     const userMessage = await dbHelpers.addMessage(
       conversation.id,
       'user',
-      content
+      content,
+      req.user!.id,
+      {
+        contentType: 'text',
+        modelId: model || conversation.model_id,
+        providerId: conversation.provider_id,
+      }
     );
 
     // Get conversation context from cache or database
@@ -137,7 +170,7 @@ async function sendMessage(
       });
 
       const responseStream = await llmService.chatCompletion(messages, {
-        model: model || conversation.ai_model,
+        model: model || conversation.model_id,  // Fixed field name
         temperature,
         maxTokens,
         stream: true,
@@ -152,21 +185,31 @@ async function sendMessage(
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }
 
-      // Save assistant response
-      await dbHelpers.addMessage(conversation.id, 'assistant', fullResponse);
+      // Save assistant response with token tracking
+      const startTime = Date.now();
+      await dbHelpers.addMessage(
+        conversation.id, 
+        'assistant', 
+        fullResponse, 
+        req.user!.id,
+        {
+          contentType: 'text',
+          modelId: model || conversation.model_id,
+          providerId: conversation.provider_id,
+          responseTimeMs: Date.now() - startTime,
+          // Note: Token counting would be done by the LLM service
+        }
+      );
 
-      // Update conversation
-      await supabaseAdmin
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversation.id);
+      // Note: The conversation stats are automatically updated by the database trigger
+      // No need to manually update last_message_at, message_count, or total_tokens_used
 
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
       // Non-streaming response
       const response = await llmService.chatCompletion(messages, {
-        model: model || conversation.ai_model,
+        model: model || conversation.model_id,  // Fixed field name
         temperature,
         maxTokens,
         cacheResponse: true,
@@ -174,18 +217,42 @@ async function sendMessage(
         conversationId: conversation.id,
       });
 
-      // Save assistant response
+      // Save assistant response with full metadata
+      const responseStartTime = Date.now();
       const assistantMessage = await dbHelpers.addMessage(
         conversation.id,
         'assistant',
-        response as string
+        response as string,
+        req.user!.id,
+        {
+          contentType: 'text',
+          modelId: model || conversation.model_id,
+          providerId: conversation.provider_id,
+          responseTimeMs: Date.now() - responseStartTime,
+          // Token counts would be provided by llmService
+          promptTokens: (response as any).usage?.prompt_tokens || 0,
+          completionTokens: (response as any).usage?.completion_tokens || 0,
+          totalTokens: (response as any).usage?.total_tokens || 0,
+        }
       );
 
-      // Update conversation
-      await supabaseAdmin
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversation.id);
+      // Update usage metrics
+      if ((response as any).usage) {
+        await dbHelpers.updateUsageMetrics(
+          req.user!.id,
+          (response as any).usage.prompt_tokens || 0,
+          (response as any).usage.completion_tokens || 0,
+          model || conversation.model_id,
+          conversation.provider_id,
+          '/api/conversations/messages',
+          {
+            responseTimeMs: Date.now() - responseStartTime,
+          }
+        );
+      }
+
+      // Note: The conversation stats are automatically updated by the database trigger
+      // No need to manually update last_message_at, message_count, or total_tokens_used
 
       res.status(200).json({
         success: true,
