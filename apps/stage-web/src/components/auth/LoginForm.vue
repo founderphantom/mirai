@@ -189,7 +189,7 @@ const successMessage = ref('')
 // Check for redirect query parameter
 const redirectTo = computed(() => {
   const redirect = route.query.redirect as string
-  return redirect || '/dashboard'
+  return redirect || '/'
 })
 
 // Form validation

@@ -101,7 +101,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  redirectTo: '/dashboard'
+  redirectTo: '/'
 })
 
 // Emits
