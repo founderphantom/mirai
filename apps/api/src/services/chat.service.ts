@@ -22,8 +22,8 @@ export class ChatService {
    * Create a new message in a conversation
    */
   async createMessage(data: ChatMessageInsert): Promise<ChatMessage> {
-    const { data: message, error } = await supabase
-      .from('chat_messages')
+    const { data: message, error } = await (supabase
+      .from('chat_messages') as any)
       .insert({
         ...data,
         content_type: data.content_type || 'text',
@@ -77,8 +77,8 @@ export class ChatService {
         ...att
       }));
 
-      const { error } = await supabase
-        .from('message_attachments')
+      const { error } = await (supabase
+      .from('message_attachments') as any)
         .insert(attachmentRecords);
 
       if (error) {
@@ -103,8 +103,8 @@ export class ChatService {
   ): Promise<ChatMessage[]> {
     const { limit = 50, offset = 0, includeDeleted = false } = options;
 
-    let query = supabase
-      .from('chat_messages')
+    let query = (supabase
+      .from('chat_messages') as any)
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
@@ -131,12 +131,12 @@ export class ChatService {
     limit: number = 50,
     offset: number = 0
   ): Promise<any[]> {
-    const { data, error } = await supabase
+    const { data, error } = await ((supabase as any)
       .rpc('get_conversation_messages', {
         p_conversation_id: conversationId,
         p_limit: limit,
         p_offset: offset
-      });
+      }));
 
     if (error) {
       throw new Error(`Failed to fetch messages: ${error.message}`);
@@ -149,8 +149,8 @@ export class ChatService {
    * Get a single message
    */
   async getMessage(messageId: string): Promise<ChatMessage | null> {
-    const { data, error } = await supabase
-      .from('chat_messages')
+    const { data, error } = await (supabase
+      .from('chat_messages') as any)
       .select('*')
       .eq('id', messageId)
       .is('deleted_at', null)
@@ -167,8 +167,8 @@ export class ChatService {
    * Update a message
    */
   async updateMessage(messageId: string, updates: ChatMessageUpdate): Promise<ChatMessage> {
-    const { data, error } = await supabase
-      .from('chat_messages')
+    const { data, error } = await (supabase
+      .from('chat_messages') as any)
       .update({
         ...updates,
         updated_at: new Date().toISOString()
@@ -189,8 +189,8 @@ export class ChatService {
    * Soft delete a message
    */
   async deleteMessage(messageId: string): Promise<void> {
-    const { error } = await supabase
-      .from('chat_messages')
+    const { error } = await (supabase
+      .from('chat_messages') as any)
       .update({
         deleted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -207,8 +207,8 @@ export class ChatService {
    */
   async hardDeleteMessage(messageId: string): Promise<void> {
     // First delete attachments
-    const { error: attachmentError } = await supabase
-      .from('message_attachments')
+    const { error: attachmentError } = await (supabase
+      .from('message_attachments') as any)
       .delete()
       .eq('message_id', messageId);
 
@@ -217,8 +217,8 @@ export class ChatService {
     }
 
     // Then delete the message
-    const { error } = await supabase
-      .from('chat_messages')
+    const { error } = await (supabase
+      .from('chat_messages') as any)
       .delete()
       .eq('id', messageId);
 
@@ -235,12 +235,12 @@ export class ChatService {
     query: string,
     limit: number = 20
   ): Promise<MessageSearchResult[]> {
-    const { data, error } = await supabase
+    const { data, error } = await ((supabase as any)
       .rpc('search_messages', {
         p_user_id: userId,
         p_query: query,
         p_limit: limit
-      });
+      }));
 
     if (error) {
       throw new Error(`Failed to search messages: ${error.message}`);
@@ -253,8 +253,8 @@ export class ChatService {
    * Get message attachments
    */
   async getMessageAttachments(messageId: string): Promise<MessageAttachment[]> {
-    const { data, error } = await supabase
-      .from('message_attachments')
+    const { data, error } = await (supabase
+      .from('message_attachments') as any)
       .select('*')
       .eq('message_id', messageId)
       .order('created_at', { ascending: true });
@@ -310,8 +310,8 @@ export class ChatService {
       updates.total_tokens = tokens.total_tokens;
     }
 
-    const { error } = await supabase
-      .from('chat_messages')
+    const { error } = await (supabase
+      .from('chat_messages') as any)
       .update(updates)
       .eq('id', messageId);
 
@@ -330,8 +330,8 @@ export class ChatService {
     totalTokens: number;
     averageTokensPerMessage: number;
   }> {
-    const { data, error } = await supabase
-      .from('chat_messages')
+    const { data, error } = await (supabase
+      .from('chat_messages') as any)
       .select('role, total_tokens')
       .eq('conversation_id', conversationId)
       .is('deleted_at', null);
@@ -402,8 +402,8 @@ export class ChatService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    const { data, error } = await supabase
-      .from('chat_messages')
+    const { data, error } = await (supabase
+      .from('chat_messages') as any)
       .delete()
       .lt('deleted_at', cutoffDate.toISOString())
       .select();
@@ -429,8 +429,8 @@ export class ChatService {
    * Update message embedding
    */
   async updateMessageEmbedding(messageId: string, embedding: number[]): Promise<void> {
-    const { error } = await supabase
-      .from('chat_messages')
+    const { error } = await (supabase
+      .from('chat_messages') as any)
       .update({
         embedding,
         updated_at: new Date().toISOString()

@@ -63,7 +63,7 @@ async function getUsageSummary(req: AuthenticatedRequest, res: NextApiResponse) 
     }
 
     // Get usage summary using RPC function
-    const usageSummary = await dbHelpers.getUserUsageSummary(
+    const usageSummary: any = await dbHelpers.getUserUsageSummary(
       req.user!.id,
       startDate,
       endDate
@@ -71,9 +71,9 @@ async function getUsageSummary(req: AuthenticatedRequest, res: NextApiResponse) 
 
     // Get daily breakdown if requested
     let dailyBreakdown = null;
-    if (include_daily === 'true' || include_daily === true) {
-      const { data: dailyData, error: dailyError } = await supabaseAdmin
-        .from('usage_daily_aggregates')
+    if (include_daily === 'true') {
+      const { data: dailyData, error: dailyError } = await (supabaseAdmin
+        .from('usage_daily_aggregates') as any)
         .select('*')
         .eq('user_id', req.user!.id)
         .gte('date', startDate.toISOString().split('T')[0])
@@ -87,7 +87,7 @@ async function getUsageSummary(req: AuthenticatedRequest, res: NextApiResponse) 
 
     // Get provider breakdown if requested
     let providerBreakdown = null;
-    if ((include_providers === 'true' || include_providers === true) && dailyBreakdown) {
+    if (include_providers === 'true' && dailyBreakdown) {
       providerBreakdown = dailyBreakdown.reduce((acc: any, day: any) => {
         if (day.provider_usage) {
           Object.entries(day.provider_usage).forEach(([provider, count]) => {
@@ -100,7 +100,7 @@ async function getUsageSummary(req: AuthenticatedRequest, res: NextApiResponse) 
 
     // Get model breakdown if requested
     let modelBreakdown = null;
-    if ((include_models === 'true' || include_models === true) && dailyBreakdown) {
+    if (include_models === 'true' && dailyBreakdown) {
       modelBreakdown = dailyBreakdown.reduce((acc: any, day: any) => {
         if (day.model_usage) {
           Object.entries(day.model_usage).forEach(([model, count]) => {
@@ -112,7 +112,7 @@ async function getUsageSummary(req: AuthenticatedRequest, res: NextApiResponse) 
     }
 
     // Get current subscription and limits
-    const profile = await dbHelpers.getUserProfile(req.user!.id);
+    const profile: any = await dbHelpers.getUserProfile(req.user!.id);
     const { data: subscription } = await dbHelpers.getUserSubscription(req.user!.id);
 
     // Calculate usage percentage based on tier limits

@@ -500,6 +500,170 @@ export interface Database {
           metadata?: Json | null;
         };
       };
+
+      // API Keys for external access
+      api_keys: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          key: string;
+          is_active: boolean;
+          expires_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          key: string;
+          is_active?: boolean;
+          expires_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          key?: string;
+          is_active?: boolean;
+          expires_at?: string | null;
+          created_at?: string;
+        };
+      };
+
+      // User notifications
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: string;
+          title: string;
+          message: string;
+          is_read: boolean;
+          metadata: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          type: string;
+          title: string;
+          message: string;
+          is_read?: boolean;
+          metadata?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          type?: string;
+          title?: string;
+          message?: string;
+          is_read?: boolean;
+          metadata?: Json | null;
+          created_at?: string;
+        };
+      };
+
+      // AI Game Actions
+      ai_game_actions: {
+        Row: {
+          id: string;
+          session_id: string;
+          user_id: string;
+          action_type: string;
+          action_data: Json;
+          result: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          user_id: string;
+          action_type: string;
+          action_data: Json;
+          result?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          user_id?: string;
+          action_type?: string;
+          action_data?: Json;
+          result?: Json | null;
+          created_at?: string;
+        };
+      };
+
+      // Game Commands
+      game_commands: {
+        Row: {
+          id: string;
+          game_type: string;
+          command: string;
+          description: string;
+          parameters: Json;
+          examples: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          game_type: string;
+          command: string;
+          description: string;
+          parameters?: Json;
+          examples?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          game_type?: string;
+          command?: string;
+          description?: string;
+          parameters?: Json;
+          examples?: Json;
+          created_at?: string;
+        };
+      };
+
+      // Voice Usage Tracking
+      voice_usage: {
+        Row: {
+          id: string;
+          user_id: string;
+          conversation_id: string | null;
+          duration_seconds: number;
+          characters_generated: number;
+          provider: string;
+          voice_id: string | null;
+          cost: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          conversation_id?: string | null;
+          duration_seconds: number;
+          characters_generated: number;
+          provider: string;
+          voice_id?: string | null;
+          cost: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          conversation_id?: string | null;
+          duration_seconds?: number;
+          characters_generated?: number;
+          provider?: string;
+          voice_id?: string | null;
+          cost?: number;
+          created_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;

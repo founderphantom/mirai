@@ -16,8 +16,10 @@ export async function rateLimit(
 
   try {
     // Determine the identifier (user ID or IP address)
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const ipAddress = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
     const identifier = req.user?.id || 
-      req.headers['x-forwarded-for'] || 
+      ipAddress || 
       req.socket.remoteAddress || 
       'anonymous';
 
@@ -75,7 +77,9 @@ export async function authRateLimit(
   }
 
   try {
-    const identifier = req.headers['x-forwarded-for'] || 
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const ipAddress = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+    const identifier = ipAddress || 
       req.socket.remoteAddress || 
       'anonymous';
 
@@ -179,12 +183,14 @@ export function createRateLimit(requests: number, window: string) {
 
       const limiter = new Ratelimit({
         redis,
-        limiter: Ratelimit.slidingWindow(requests, window),
+        limiter: Ratelimit.slidingWindow(requests, window as any),
         analytics: true,
       });
 
       const identifier = req.user?.id || 
-        req.headers['x-forwarded-for'] || 
+        (Array.isArray(req.headers['x-forwarded-for']) 
+          ? req.headers['x-forwarded-for'][0] 
+          : req.headers['x-forwarded-for']) || 
         req.socket.remoteAddress || 
         'anonymous';
 

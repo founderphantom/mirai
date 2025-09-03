@@ -49,8 +49,8 @@ export async function authenticateUser(
     }
 
     // Get user from database
-    const { data: user, error: userError } = await supabaseAdmin
-      .from('users')
+    const { data: user, error: userError } = await (supabaseAdmin
+      .from('users') as any)
       .select('*')
       .eq('id', decoded.sub)
       .single();
@@ -67,8 +67,8 @@ export async function authenticateUser(
     }
 
     // Get user subscription
-    const { data: subscription } = await supabaseAdmin
-      .from('subscriptions')
+    const { data: subscription } = await (supabaseAdmin
+      .from('subscriptions') as any)
       .select('*')
       .eq('user_id', user.id)
       .eq('status', 'active')
@@ -86,8 +86,8 @@ export async function authenticateUser(
     };
 
     // Update last login
-    await supabaseAdmin
-      .from('users')
+    await (supabaseAdmin
+      .from('users') as any)
       .update({ last_login: new Date().toISOString() })
       .eq('id', user.id);
 
@@ -170,8 +170,8 @@ export async function authenticateApiKey(
     }
 
     // Validate API key against database
-    const { data: apiKeyData, error } = await supabaseAdmin
-      .from('api_keys')
+    const { data: apiKeyData, error } = await (supabaseAdmin
+      .from('api_keys') as any)
       .select('*')
       .eq('key', apiKey)
       .eq('is_active', true)
@@ -189,8 +189,8 @@ export async function authenticateApiKey(
     }
 
     // Get associated user
-    const { data: user, error: userError } = await supabaseAdmin
-      .from('users')
+    const { data: user, error: userError } = await (supabaseAdmin
+      .from('users') as any)
       .select('*')
       .eq('id', apiKeyData.user_id)
       .single();
@@ -208,8 +208,8 @@ export async function authenticateApiKey(
     };
 
     // Update API key last used
-    await supabaseAdmin
-      .from('api_keys')
+    await (supabaseAdmin
+      .from('api_keys') as any)
       .update({ last_used_at: new Date().toISOString() })
       .eq('id', apiKeyData.id);
 

@@ -104,8 +104,17 @@ export class LLMService {
 
       // Track usage if user ID provided
       if (options.userId && typeof response === 'string') {
-        const tokens = this.estimateTokens(messages, response);
-        await dbHelpers.updateUsageMetrics(options.userId, tokens, model);
+        const totalTokens = this.estimateTokens(messages, response);
+        // Split tokens between prompt and completion (rough estimate)
+        const promptTokens = Math.floor(totalTokens * 0.4);
+        const completionTokens = totalTokens - promptTokens;
+        await dbHelpers.updateUsageMetrics(
+          options.userId,
+          promptTokens,
+          completionTokens,
+          model,
+          provider
+        );
       }
 
       return response;
@@ -448,7 +457,10 @@ export class LLMService {
 
   // Calculate cost
   calculateCost(provider: string, model: string, tokens: number): number {
-    const config = MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS]?.[model as any];
+    const providerConfigs = (MODEL_CONFIGS as any)[provider];
+    if (!providerConfigs) return 0;
+    
+    const config = providerConfigs[model];
     if (!config) return 0;
     
     return (tokens / 1000) * config.costPer1kTokens;

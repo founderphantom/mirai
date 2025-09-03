@@ -22,6 +22,7 @@
     "dev:apps": "pnpm -rF=\"./apps/*\" run --parallel dev",
     "dev:packages": "pnpm -rF=\"./packages/*\" --parallel run dev",
     "build": "turbo run build -F=\"./packages/*\" -F=\"./apps/*\"",
+    "build:api": "turbo run build -F @airi/api",
     "build:web": "turbo run build -F @proj-airi/stage-web",
     "build:tamagotchi": "pnpm -rF @proj-airi/stage-tamagotchi run app:build",
     "build:apps": "turbo run build -F=\"./apps/*\"",
