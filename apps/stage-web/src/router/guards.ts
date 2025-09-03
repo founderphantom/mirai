@@ -31,8 +31,8 @@ export function setupRouteGuards(router: Router) {
     
     // If user is authenticated and trying to access auth pages
     if (isAuthenticated.value && isAuthRoute && !to.path.includes('callback')) {
-      // Redirect to dashboard
-      next('/dashboard')
+      // Redirect to home page
+      next('/')
       return
     }
     

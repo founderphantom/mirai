@@ -178,7 +178,7 @@ export function useAuthGuard() {
     return true
   }
   
-  const requireGuest = async (redirectTo = '/dashboard') => {
+  const requireGuest = async (redirectTo = '/') => {
     // Wait for auth to initialize
     while (loading.value) {
       await new Promise(resolve => setTimeout(resolve, 50))

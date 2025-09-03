@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { OnboardingDialog, ToasterRoot } from '@proj-airi/stage-ui/components'
+import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
-import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { StageTransitionGroup } from '@proj-airi/ui-transitions'
 import { useDark } from '@vueuse/core'
@@ -20,8 +19,6 @@ const i18n = useI18n()
 const displayModelsStore = useDisplayModelsStore()
 const settingsStore = useSettings()
 const settings = storeToRefs(settingsStore)
-const onboardingStore = useOnboardingStore()
-const { shouldShowSetup } = storeToRefs(onboardingStore)
 const isDark = useDark()
 
 const primaryColor = computed(() => {
@@ -58,22 +55,11 @@ watch(settings.themeColorsHueDynamic, () => {
   document.documentElement.classList.toggle('dynamic-hue', settings.themeColorsHueDynamic.value)
 }, { immediate: true })
 
-// Initialize first-time setup check when app mounts
+// Initialize when app mounts
 onMounted(async () => {
-  onboardingStore.initializeSetupCheck()
-
   await displayModelsStore.loadDisplayModelsFromIndexedDB()
   await settingsStore.initializeStageModel()
 })
-
-// Handle first-time setup events
-function handleSetupConfigured() {
-  onboardingStore.markSetupCompleted()
-}
-
-function handleSetupSkipped() {
-  onboardingStore.markSetupSkipped()
-}
 </script>
 
 <template>
@@ -96,13 +82,6 @@ function handleSetupSkipped() {
   <ToasterRoot @close="id => toast.dismiss(id)">
     <Toaster />
   </ToasterRoot>
-
-  <!-- First Time Setup Dialog -->
-  <OnboardingDialog
-    v-model="shouldShowSetup"
-    @configured="handleSetupConfigured"
-    @skipped="handleSetupSkipped"
-  />
 </template>
 
 <style>

@@ -96,14 +96,14 @@ onMounted(async () => {
       }
     }
     
-    // Success - redirect to dashboard or intended destination
+    // Success - redirect to home or intended destination
     statusMessage.value = 'Authentication successful!'
-    subMessage.value = 'Redirecting to your dashboard...'
+    subMessage.value = 'Redirecting...'
     
     toast.success('Welcome to AIRI!')
     
-    // Get redirect URL from query or default to dashboard
-    const redirectTo = route.query.redirect as string || '/dashboard'
+    // Get redirect URL from query or default to home
+    const redirectTo = route.query.redirect as string || '/'
     
     setTimeout(() => {
       router.push(redirectTo)
