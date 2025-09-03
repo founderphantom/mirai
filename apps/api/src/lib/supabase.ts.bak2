@@ -69,8 +69,8 @@ export const getUserScopedClient = (userId: string, accessToken: string): Supaba
 export const securityHelpers = {
   // Verify user owns a conversation
   async verifyConversationOwnership(conversationId: string, userId: string): Promise<boolean> {
-    const { data, error } = await (supabaseAdmin
-      .from('conversations') as any)
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
       .select('id')
       .eq('id', conversationId)
       .eq('user_id', userId)
@@ -81,8 +81,8 @@ export const securityHelpers = {
 
   // Verify user owns a message
   async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> {
-    const { data, error } = await (supabaseAdmin
-      .from('chat_messages') as any)
+    const { data, error } = await supabaseAdmin
+      .from('chat_messages')
       .select('id')
       .eq('id', messageId)
       .eq('user_id', userId)
@@ -125,8 +125,8 @@ export const securityHelpers = {
     const isAllowed = await dbHelpers.checkRateLimit(userId, limit);
     const oneHourAgo = new Date(Date.now() - 3600000);
     
-    const { count } = await (supabaseAdmin
-      .from('usage_logs') as any)
+    const { count } = await supabaseAdmin
+      .from('usage_logs')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .gte('created_at', oneHourAgo.toISOString());
@@ -153,8 +153,8 @@ export const dbHelpers = {
 
   // Get user profile
   async getUserProfile(userId: string) {
-    const { data, error } = await (supabaseAdmin
-      .from('user_profiles') as any)
+    const { data, error } = await supabaseAdmin
+      .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .single();
@@ -165,8 +165,8 @@ export const dbHelpers = {
 
   // Get user subscription from subscription history
   async getUserSubscription(userId: string) {
-    const { data, error } = await (supabaseAdmin
-      .from('subscription_history') as any)
+    const { data, error } = await supabaseAdmin
+      .from('subscription_history')
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'active')
@@ -179,8 +179,8 @@ export const dbHelpers = {
 
   // Update user profile
   async updateUserProfile(userId: string, updates: any) {
-    const { data, error } = await (supabaseAdmin
-      .from('user_profiles') as any)
+    const { data, error } = await supabaseAdmin
+      .from('user_profiles')
       .update({
         ...updates,
         updated_at: new Date().toISOString(),
@@ -209,8 +209,8 @@ export const dbHelpers = {
       settings?: any;
     } = {}
   ) {
-    const { data, error } = await (supabaseAdmin
-      .from('conversations') as any)
+    const { data, error } = await supabaseAdmin
+      .from('conversations')
       .insert({
         user_id: userId,
         title: title || 'New Conversation',
@@ -287,8 +287,8 @@ export const dbHelpers = {
       deleted_at: null,
     };
 
-    const { data, error } = await (supabaseAdmin
-      .from('chat_messages') as any)
+    const { data, error } = await supabaseAdmin
+      .from('chat_messages')
       .insert(messageData)
       .select()
       .single();
@@ -303,8 +303,8 @@ export const dbHelpers = {
 
   // Soft delete a message
   async softDeleteMessage(messageId: string, userId: string) {
-    const { data, error } = await (supabaseAdmin
-      .from('chat_messages') as any)
+    const { data, error } = await supabaseAdmin
+      .from('chat_messages')
       .update({
         deleted_at: new Date().toISOString(),
       })
@@ -319,8 +319,8 @@ export const dbHelpers = {
 
   // Get conversation messages (excluding soft deleted)
   async getConversationMessages(conversationId: string, limit = 50, beforeId?: string) {
-    let query = (supabaseAdmin
-      .from('chat_messages') as any)
+    let query = supabaseAdmin
+      .from('chat_messages')
       .select('*')
       .eq('conversation_id', conversationId)
       .is('deleted_at', null)
@@ -328,8 +328,8 @@ export const dbHelpers = {
 
     if (beforeId) {
       // Get the timestamp of the before message for cursor pagination
-      const { data: beforeMessage } = await (supabaseAdmin
-        .from('chat_messages') as any)
+      const { data: beforeMessage } = await supabaseAdmin
+        .from('chat_messages')
         .select('created_at')
         .eq('id', beforeId)
         .single();
@@ -376,8 +376,8 @@ export const dbHelpers = {
       estimatedCost = totalTokens * 0.000001;
     }
 
-    const { error } = await (supabaseAdmin
-      .from('usage_logs') as any)
+    const { error } = await supabaseAdmin
+      .from('usage_logs')
       .insert({
         user_id: userId,
         endpoint,
@@ -426,8 +426,8 @@ export const dbHelpers = {
     const today = new Date().toISOString().split('T')[0];
     
     // Try to update existing record first
-    const { data: existing } = await (supabaseAdmin
-      .from('usage_daily_aggregates') as any)
+    const { data: existing } = await supabaseAdmin
+      .from('usage_daily_aggregates')
       .select('*')
       .eq('user_id', userId)
       .eq('date', today)
@@ -445,8 +445,8 @@ export const dbHelpers = {
         modelUsage[updates.modelId] = (modelUsage[updates.modelId] || 0) + 1;
       }
 
-      await (supabaseAdmin
-        .from('usage_daily_aggregates') as any)
+      await supabaseAdmin
+        .from('usage_daily_aggregates')
         .update({
           message_count: existing.message_count + (updates.messageCount || 0),
           total_prompt_tokens: existing.total_prompt_tokens + (updates.promptTokens || 0),
@@ -463,8 +463,8 @@ export const dbHelpers = {
       const providerUsage = updates.providerId ? { [updates.providerId]: 1 } : {};
       const modelUsage = updates.modelId ? { [updates.modelId]: 1 } : {};
 
-      await (supabaseAdmin
-        .from('usage_daily_aggregates') as any)
+      await supabaseAdmin
+        .from('usage_daily_aggregates')
         .insert({
           user_id: userId,
           date: today,
@@ -486,8 +486,8 @@ export const dbHelpers = {
   async checkRateLimit(userId: string, limit: number): Promise<boolean> {
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
     
-    const { count, error } = await (supabaseAdmin
-      .from('usage_logs') as any)
+    const { count, error } = await supabaseAdmin
+      .from('usage_logs')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .gte('created_at', oneHourAgo);
@@ -498,8 +498,8 @@ export const dbHelpers = {
 
   // Log API request
   async logApiRequest(userId: string, endpoint: string, method: string, statusCode: number) {
-    const { error } = await (supabaseAdmin
-      .from('usage_logs') as any)
+    const { error } = await supabaseAdmin
+      .from('usage_logs')
       .insert({
         user_id: userId,
         endpoint,
@@ -521,7 +521,7 @@ export const dbHelpers = {
     startDate?: Date,
     endDate?: Date
   ) {
-    const { data, error } = await (supabaseAdmin as any).rpc('get_user_usage_stats', {
+    const { data, error } = await supabaseAdmin.rpc('get_user_usage_stats', {
       p_user_id: userId,
       p_start_date: startDate?.toISOString().split('T')[0] || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       p_end_date: endDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
@@ -538,7 +538,7 @@ export const dbHelpers = {
     limit: number = 20,
     offset: number = 0
   ) {
-    const { data, error } = await (supabaseAdmin as any).rpc('search_messages', {
+    const { data, error } = await supabaseAdmin.rpc('search_messages', {
       p_user_id: userId,
       p_query: query,
       p_limit: limit,
@@ -556,7 +556,7 @@ export const dbHelpers = {
     offset: number = 0,
     includeArchived: boolean = false
   ) {
-    const { data, error } = await (supabaseAdmin as any).rpc('get_conversations_with_last_message', {
+    const { data, error } = await supabaseAdmin.rpc('get_conversations_with_last_message', {
       p_user_id: userId,
       p_limit: limit,
       p_offset: offset,
@@ -574,7 +574,7 @@ export const dbHelpers = {
     limit: number = 50,
     beforeId?: string
   ) {
-    const { data, error } = await (supabaseAdmin as any).rpc('get_conversation_messages', {
+    const { data, error } = await supabaseAdmin.rpc('get_conversation_messages', {
       p_conversation_id: conversationId,
       p_user_id: userId,
       p_limit: limit,
@@ -587,7 +587,7 @@ export const dbHelpers = {
 
   // Get conversation summary with token usage
   async getConversationSummary(conversationId: string, userId: string) {
-    const { data, error } = await (supabaseAdmin as any).rpc('get_conversation_summary', {
+    const { data, error } = await supabaseAdmin.rpc('get_conversation_summary', {
       p_conversation_id: conversationId,
       p_user_id: userId,
     });
@@ -598,7 +598,7 @@ export const dbHelpers = {
 
   // Archive old conversations
   async archiveOldConversations(userId: string, daysInactive: number = 30) {
-    const { data, error } = await (supabaseAdmin as any).rpc('archive_old_conversations', {
+    const { data, error } = await supabaseAdmin.rpc('archive_old_conversations', {
       p_user_id: userId,
       p_days_inactive: daysInactive,
     });
@@ -609,7 +609,7 @@ export const dbHelpers = {
 
   // Export conversation as JSON
   async exportConversationJSON(conversationId: string, userId: string) {
-    const { data, error } = await (supabaseAdmin as any).rpc('export_conversation_json', {
+    const { data, error } = await supabaseAdmin.rpc('export_conversation_json', {
       p_conversation_id: conversationId,
       p_user_id: userId,
     });

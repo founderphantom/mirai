@@ -53,8 +53,8 @@ export class SubscriptionService {
    * Get user profile with subscription info
    */
   async getUserProfile(userId: string): Promise<UserProfile | null> {
-    const { data, error } = await supabase
-      .from('user_profiles')
+    const { data, error } = await (supabase
+      .from('user_profiles') as any)
       .select('*')
       .eq('id', userId)
       .single();
@@ -75,8 +75,8 @@ export class SubscriptionService {
     full_name?: string;
     avatar_url?: string;
   }): Promise<UserProfile> {
-    const { data: profile, error } = await supabase
-      .from('user_profiles')
+    const { data: profile, error } = await (supabase
+      .from('user_profiles') as any)
       .upsert({
         id: data.id,
         email: data.email,
@@ -194,8 +194,8 @@ export class SubscriptionService {
       updates.daily_message_count = profile.daily_message_count + 1;
     }
 
-    const { error } = await supabase
-      .from('user_profiles')
+    const { error } = await (supabase
+      .from('user_profiles') as any)
       .update(updates)
       .eq('id', userId);
 
@@ -208,8 +208,8 @@ export class SubscriptionService {
    * Reset daily message count
    */
   async resetDailyMessageCount(userId: string): Promise<void> {
-    const { error } = await supabase
-      .from('user_profiles')
+    const { error } = await (supabase
+      .from('user_profiles') as any)
       .update({
         daily_message_count: 0,
         updated_at: new Date().toISOString()
@@ -233,8 +233,8 @@ export class SubscriptionService {
     });
 
     // Update user profile with Stripe customer ID
-    const { error } = await supabase
-      .from('user_profiles')
+    const { error } = await (supabase
+      .from('user_profiles') as any)
       .update({
         stripe_customer_id: customer.id,
         updated_at: new Date().toISOString()
@@ -277,8 +277,8 @@ export class SubscriptionService {
     });
 
     // Update user profile
-    const { error: profileError } = await supabase
-      .from('user_profiles')
+    const { error: profileError } = await (supabase
+      .from('user_profiles') as any)
       .update({
         stripe_subscription_id: subscription.id,
         subscription_tier: tier,
@@ -292,8 +292,8 @@ export class SubscriptionService {
     }
 
     // Create subscription history record
-    const { error: historyError } = await supabase
-      .from('subscription_history')
+    const { error: historyError } = await (supabase
+      .from('subscription_history') as any)
       .insert({
         user_id: userId,
         stripe_subscription_id: subscription.id,
@@ -304,7 +304,7 @@ export class SubscriptionService {
         currency: subscription.items.data[0].price.currency,
         interval: subscription.items.data[0].price.recurring?.interval as 'month' | 'year',
         started_at: new Date(subscription.created * 1000).toISOString(),
-        metadata: { stripe_response: subscription } as Json
+        metadata: { stripe_response: subscription } as unknown as Json
       });
 
     if (historyError) {
@@ -330,8 +330,8 @@ export class SubscriptionService {
     );
 
     // Update user profile
-    const { error: profileError } = await supabase
-      .from('user_profiles')
+    const { error: profileError } = await (supabase
+      .from('user_profiles') as any)
       .update({
         subscription_status: 'canceled',
         updated_at: new Date().toISOString()
@@ -343,8 +343,8 @@ export class SubscriptionService {
     }
 
     // Update subscription history
-    const { error: historyError } = await supabase
-      .from('subscription_history')
+    const { error: historyError } = await (supabase
+      .from('subscription_history') as any)
       .update({
         status: 'canceled',
         ended_at: new Date(subscription.cancel_at! * 1000).toISOString()
@@ -389,8 +389,8 @@ export class SubscriptionService {
     );
 
     // Update user profile
-    const { error: profileError } = await supabase
-      .from('user_profiles')
+    const { error: profileError } = await (supabase
+      .from('user_profiles') as any)
       .update({
         subscription_tier: newTier,
         updated_at: new Date().toISOString()
@@ -402,14 +402,14 @@ export class SubscriptionService {
     }
 
     // End current history record and create new one
-    await supabase
-      .from('subscription_history')
+    await (supabase
+      .from('subscription_history') as any)
       .update({ ended_at: new Date().toISOString() })
       .eq('stripe_subscription_id', profile.stripe_subscription_id)
       .is('ended_at', null);
 
-    await supabase
-      .from('subscription_history')
+    await (supabase
+      .from('subscription_history') as any)
       .insert({
         user_id: userId,
         stripe_subscription_id: updatedSubscription.id,
@@ -441,8 +441,8 @@ export class SubscriptionService {
         }
 
         // Update user profile
-        await supabase
-          .from('user_profiles')
+        await (supabase
+      .from('user_profiles') as any)
           .update({
             subscription_status: subscription.status as SubscriptionStatus,
             updated_at: new Date().toISOString()
@@ -450,8 +450,8 @@ export class SubscriptionService {
           .eq('stripe_subscription_id', subscription.id);
 
         // Update subscription history
-        await supabase
-          .from('subscription_history')
+        await (supabase
+      .from('subscription_history') as any)
           .update({
             status: subscription.status as SubscriptionStatus,
             ended_at: subscription.status === 'canceled' 
@@ -470,16 +470,16 @@ export class SubscriptionService {
         }
 
         // Get user ID from customer
-        const { data: profile } = await supabase
-          .from('user_profiles')
+        const { data: profile } = await (supabase
+      .from('user_profiles') as any)
           .select('id')
           .eq('stripe_customer_id', invoice.customer)
           .single();
 
         if (profile) {
           // Create payment history record
-          await supabase
-            .from('payment_history')
+          await (supabase
+      .from('payment_history') as any)
             .insert({
               user_id: profile.id,
               stripe_payment_intent_id: invoice.payment_intent as string,
@@ -488,7 +488,7 @@ export class SubscriptionService {
               currency: invoice.currency,
               status: 'succeeded',
               description: `Subscription payment for ${invoice.period_start} - ${invoice.period_end}`,
-              metadata: { invoice } as Json
+              metadata: { invoice } as unknown as Json
             });
         }
         break;
@@ -501,8 +501,8 @@ export class SubscriptionService {
         }
 
         // Update subscription status to past_due
-        await supabase
-          .from('user_profiles')
+        await (supabase
+      .from('user_profiles') as any)
           .update({
             subscription_status: 'past_due',
             updated_at: new Date().toISOString()
@@ -516,8 +516,8 @@ export class SubscriptionService {
    * Get subscription history for a user
    */
   async getSubscriptionHistory(userId: string): Promise<SubscriptionHistory[]> {
-    const { data, error } = await supabase
-      .from('subscription_history')
+    const { data, error } = await (supabase
+      .from('subscription_history') as any)
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -533,8 +533,8 @@ export class SubscriptionService {
    * Get payment history for a user
    */
   async getPaymentHistory(userId: string): Promise<PaymentHistory[]> {
-    const { data, error } = await supabase
-      .from('payment_history')
+    const { data, error } = await (supabase
+      .from('payment_history') as any)
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });

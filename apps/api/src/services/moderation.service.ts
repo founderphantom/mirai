@@ -158,8 +158,8 @@ export class ModerationService {
     scores: Json;
     action_taken: ModerationAction;
   }): Promise<ModerationLog> {
-    const { data: log, error } = await supabase
-      .from('moderation_logs')
+    const { data: log, error } = await (supabase
+      .from('moderation_logs') as any)
       .insert({
         ...data,
         created_at: new Date().toISOString()
@@ -185,8 +185,8 @@ export class ModerationService {
     actionTaken: ViolationActionTaken,
     expiresAt?: Date
   ): Promise<UserViolation> {
-    const { data: violation, error } = await supabase
-      .from('user_violations')
+    const { data: violation, error } = await (supabase
+      .from('user_violations') as any)
       .insert({
         user_id: userId,
         type,
@@ -220,8 +220,8 @@ export class ModerationService {
     switch (action) {
       case 'temporary_ban':
         // Update user profile to reflect temporary ban
-        await supabase
-          .from('user_profiles')
+        await (supabase
+      .from('user_profiles') as any)
           .update({
             settings: {
               banned: true,
@@ -234,8 +234,8 @@ export class ModerationService {
 
       case 'permanent_ban':
         // Update user profile to reflect permanent ban
-        await supabase
-          .from('user_profiles')
+        await (supabase
+      .from('user_profiles') as any)
           .update({
             settings: {
               banned: true,
@@ -260,8 +260,8 @@ export class ModerationService {
     reason?: string;
     expiresAt?: Date;
   }> {
-    const { data: profile } = await supabase
-      .from('user_profiles')
+    const { data: profile } = await (supabase
+      .from('user_profiles') as any)
       .select('settings')
       .eq('id', userId)
       .single();
@@ -278,8 +278,8 @@ export class ModerationService {
         const expiresAt = new Date(settings.ban_expires_at);
         if (expiresAt < new Date()) {
           // Ban has expired, remove it
-          await supabase
-            .from('user_profiles')
+          await (supabase
+      .from('user_profiles') as any)
             .update({
               settings: {
                 ...settings,
@@ -318,8 +318,8 @@ export class ModerationService {
     userId: string,
     includeExpired: boolean = false
   ): Promise<UserViolation[]> {
-    let query = supabase
-      .from('user_violations')
+    let query = (supabase
+      .from('user_violations') as any)
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -344,8 +344,8 @@ export class ModerationService {
     userId: string,
     limit: number = 50
   ): Promise<ModerationLog[]> {
-    const { data, error } = await supabase
-      .from('moderation_logs')
+    const { data, error } = await (supabase
+      .from('moderation_logs') as any)
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -366,8 +366,8 @@ export class ModerationService {
     reviewerId: string,
     newAction: ModerationAction
   ): Promise<ModerationLog> {
-    const { data, error } = await supabase
-      .from('moderation_logs')
+    const { data, error } = await (supabase
+      .from('moderation_logs') as any)
       .update({
         action_taken: newAction,
         reviewed_by: reviewerId,
@@ -398,8 +398,8 @@ export class ModerationService {
     byCategory: Record<string, number>;
     byAction: Record<string, number>;
   }> {
-    const { data, error } = await supabase
-      .from('moderation_logs')
+    const { data, error } = await (supabase
+      .from('moderation_logs') as any)
       .select('flagged, categories, action_taken')
       .gte('created_at', startDate)
       .lte('created_at', endDate);
@@ -449,8 +449,8 @@ export class ModerationService {
     
     // Check for rapid-fire messages (more than 10 in 1 minute)
     const oneMinuteAgo = new Date(Date.now() - 60000);
-    const { data: recentMessages } = await supabase
-      .from('chat_messages')
+    const { data: recentMessages } = await (supabase
+      .from('chat_messages') as any)
       .select('id')
       .eq('role', 'user')
       .gte('created_at', oneMinuteAgo.toISOString())
@@ -461,15 +461,15 @@ export class ModerationService {
     }
 
     // Check for repeated content
-    const { data: last10Messages } = await supabase
-      .from('chat_messages')
+    const { data: last10Messages } = await (supabase
+      .from('chat_messages') as any)
       .select('content')
       .eq('role', 'user')
       .order('created_at', { ascending: false })
       .limit(10);
 
     if (last10Messages) {
-      const contents = last10Messages.map(m => m.content);
+      const contents = last10Messages.map((m: any) => m.content);
       const uniqueContents = new Set(contents);
       if (uniqueContents.size < contents.length / 2) {
         patterns.push('repeated_content');
@@ -477,8 +477,8 @@ export class ModerationService {
     }
 
     // Check for previous violations
-    const { data: violations } = await supabase
-      .from('user_violations')
+    const { data: violations } = await (supabase
+      .from('user_violations') as any)
       .select('type')
       .eq('user_id', userId)
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
@@ -500,8 +500,8 @@ export class ModerationService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
-    const { data, error } = await supabase
-      .from('moderation_logs')
+    const { data, error } = await (supabase
+      .from('moderation_logs') as any)
       .delete()
       .lt('created_at', cutoffDate.toISOString())
       .eq('action_taken', 'none')

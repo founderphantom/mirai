@@ -22,7 +22,7 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
 async function getUserProfile(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     // Get user profile with subscription info
-    const profile = await dbHelpers.getUserProfile(req.user!.id);
+    const profile: any = await dbHelpers.getUserProfile(req.user!.id);
     
     if (!profile) {
       return res.status(404).json({
@@ -40,7 +40,7 @@ async function getUserProfile(req: AuthenticatedRequest, res: NextApiResponse) {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
     
-    const usageSummary = await dbHelpers.getUserUsageSummary(
+    const usageSummary: any = await dbHelpers.getUserUsageSummary(
       req.user!.id,
       startOfMonth,
       new Date()
@@ -48,7 +48,7 @@ async function getUserProfile(req: AuthenticatedRequest, res: NextApiResponse) {
 
     // Combine all data
     const profileData = {
-      ...profile,
+      ...(profile || {}),
       subscription: subscription || null,
       usage: usageSummary || null,
     };
@@ -92,17 +92,17 @@ async function updateUserProfile(req: AuthenticatedRequest, res: NextApiResponse
     if (bio !== undefined) updates.bio = bio;
     if (preferences !== undefined) {
       // Merge preferences with existing ones
-      const currentProfile = await dbHelpers.getUserProfile(req.user!.id);
+      const currentProfile: any = await dbHelpers.getUserProfile(req.user!.id);
       updates.preferences = {
-        ...(currentProfile?.preferences || {}),
+        ...((currentProfile as any)?.preferences || {}),
         ...preferences,
       };
     }
     if (metadata !== undefined) {
       // Merge metadata with existing ones
-      const currentProfile = await dbHelpers.getUserProfile(req.user!.id);
+      const currentProfile: any = await dbHelpers.getUserProfile(req.user!.id);
       updates.metadata = {
-        ...(currentProfile?.metadata || {}),
+        ...((currentProfile as any)?.metadata || {}),
         ...metadata,
       };
     }

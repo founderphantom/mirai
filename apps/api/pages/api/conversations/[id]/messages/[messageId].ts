@@ -111,8 +111,8 @@ async function updateMessage(
     }
 
     // Update the message
-    const { data: updatedMessage, error } = await supabaseAdmin
-      .from('chat_messages')
+    const { data: updatedMessage, error } = await (supabaseAdmin
+      .from('chat_messages') as any)
       .update(updates)
       .eq('id', messageId)
       .eq('user_id', req.user!.id)
@@ -169,7 +169,7 @@ async function softDeleteMessage(
     }
 
     // Soft delete the message
-    const deletedMessage = await dbHelpers.softDeleteMessage(messageId, req.user!.id);
+    const deletedMessage: any = await dbHelpers.softDeleteMessage(messageId, req.user!.id);
 
     // Log the deletion
     await dbHelpers.logApiRequest(
@@ -183,8 +183,8 @@ async function softDeleteMessage(
       success: true,
       message: 'Message deleted successfully',
       data: {
-        id: deletedMessage.id,
-        deleted_at: deletedMessage.deleted_at,
+        id: deletedMessage?.id || messageId,
+        deleted_at: deletedMessage?.deleted_at || new Date().toISOString(),
       },
     });
   } catch (error: any) {
