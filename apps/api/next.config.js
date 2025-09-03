@@ -5,12 +5,6 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@supabase/supabase-js', 'stripe'],
   },
-  // Enable Edge Runtime for API routes
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
   // CORS headers
   async headers() {
     return [

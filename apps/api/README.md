@@ -67,12 +67,7 @@ cp .env.example .env
 
 4. Configure environment variables in `.env` (see Configuration section)
 
-5. Run database migrations:
-```bash
-pnpm migrate
-```
-
-6. Start development server:
+5. Start development server:
 ```bash
 pnpm dev
 ```

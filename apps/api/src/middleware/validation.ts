@@ -31,8 +31,16 @@ export const schemas = {
 
   // Chat schemas
   createConversation: z.object({
-    title: z.string().min(1).max(255),
-    aiModel: z.string().default('gpt-3.5-turbo'),
+    title: z.string().min(1).max(255).optional(),
+    model_id: z.string().default('gpt-3.5-turbo'),
+    provider_id: z.string().default('openai'),
+    system_prompt: z.string().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    max_tokens: z.number().min(1).max(32000).optional(),
+    avatar_id: z.string().optional(),
+    voice_id: z.string().optional(),
+    personality_template: z.string().optional(),
+    settings: z.record(z.any()).optional(),
     metadata: z.record(z.any()).optional(),
   }),
 
@@ -77,6 +85,9 @@ export const schemas = {
     limit: z.coerce.number().min(1).max(100).default(20),
     sort: z.string().optional(),
     order: z.enum(['asc', 'desc']).default('desc'),
+    before_id: z.string().uuid().optional(),
+    include_archived: z.coerce.boolean().optional(),
+    starred_only: z.coerce.boolean().optional(),
   }),
 
   // ID parameters
@@ -90,6 +101,46 @@ export const schemas = {
     aiModel: z.string().optional(),
     startDate: z.string().datetime().optional(),
     endDate: z.string().datetime().optional(),
+  }),
+
+  // User profile schemas
+  updateProfile: z.object({
+    username: z.string().min(3).max(50).optional(),
+    display_name: z.string().max(100).optional(),
+    avatar_url: z.string().url().optional().nullable(),
+    bio: z.string().max(500).optional(),
+    preferences: z.record(z.any()).optional(),
+    metadata: z.record(z.any()).optional(),
+  }),
+
+  // Search schemas
+  searchMessages: z.object({
+    q: z.string().min(2).optional(),
+    query: z.string().min(2).optional(),
+    limit: z.coerce.number().min(1).max(100).default(20),
+    offset: z.coerce.number().min(0).default(0),
+    conversation_id: z.string().uuid().optional(),
+    include_context: z.coerce.boolean().default(true),
+    highlight: z.coerce.boolean().default(true),
+  }).refine(
+    (data) => data.q || data.query,
+    { message: 'Either q or query parameter is required' }
+  ),
+
+  // Usage schemas
+  usageSummary: z.object({
+    period: z.enum(['day', 'week', 'month', 'year']).default('month'),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+    include_daily: z.coerce.boolean().optional(),
+    include_providers: z.coerce.boolean().optional(),
+    include_models: z.coerce.boolean().optional(),
+  }),
+
+  // Message management schemas
+  updateMessage: z.object({
+    rating: z.number().min(1).max(5).optional(),
+    feedback: z.string().max(1000).optional(),
   }),
 };
 
