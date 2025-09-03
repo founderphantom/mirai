@@ -9,8 +9,7 @@
     "start": "next start -p 3001",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
-    "test": "jest",
-    "migrate": "supabase migration up"
+    "test": "jest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",
