@@ -72,7 +72,7 @@ onMounted(async () => {
       return
     }
     
-    // Check for session from OAuth callback
+    // Check for session from OAuth callback or email login
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     
     if (sessionError) {
@@ -83,6 +83,8 @@ onMounted(async () => {
       return
     }
     
+    // For email login, we'll have a session immediately
+    // For OAuth, we might need to check the hash params
     if (!session) {
       // Try to exchange code for session (for OAuth flow)
       const hashParams = new URLSearchParams(window.location.hash.substring(1))
@@ -96,7 +98,7 @@ onMounted(async () => {
       }
     }
     
-    // Success - redirect to home or intended destination
+    // Success - Show consistent message for both email and OAuth logins
     statusMessage.value = 'Authentication successful!'
     subMessage.value = 'Redirecting...'
     
@@ -105,9 +107,10 @@ onMounted(async () => {
     // Get redirect URL from query or default to home
     const redirectTo = route.query.redirect as string || '/'
     
+    // Slightly longer delay for better UX
     setTimeout(() => {
       router.push(redirectTo)
-    }, 1000)
+    }, 1500)
     
   } catch (err) {
     console.error('Callback error:', err)
