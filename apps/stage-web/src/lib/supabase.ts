@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getOAuthCallbackUrl, getPasswordResetUrl } from './utils/url'
 
 // Supabase configuration
 const supabaseUrl = 'https://sgupizcxhxohouklbntm.supabase.co'
@@ -45,7 +46,7 @@ export const authHelpers = {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: getOAuthCallbackUrl(),
       },
     })
     
@@ -57,7 +58,7 @@ export const authHelpers = {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: getOAuthCallbackUrl(),
         scopes: provider === 'google' ? 'email profile' : 'identify email',
       },
     })
@@ -73,7 +74,7 @@ export const authHelpers = {
 
   async resetPassword(email: string) {
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      redirectTo: getPasswordResetUrl(),
     })
     
     if (error) throw error

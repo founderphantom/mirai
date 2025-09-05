@@ -260,14 +260,13 @@ const handleSubmit = async () => {
       return
     }
     
-    // Success
-    successMessage.value = 'Sign in successful! Redirecting...'
-    toast.success('Welcome back!')
+    // Success - Redirect to callback page for consistent loading experience
+    // The callback page will handle the final redirect
+    const callbackUrl = redirectTo.value !== '/' 
+      ? `/auth/callback?redirect=${encodeURIComponent(redirectTo.value)}`
+      : '/auth/callback'
     
-    // Redirect after a short delay
-    setTimeout(() => {
-      router.push(redirectTo.value)
-    }, 1000)
+    router.push(callbackUrl)
     
   } catch (err) {
     console.error('Login error:', err)
