@@ -1,5 +1,4 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import jwt from 'jsonwebtoken';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export interface AuthenticatedRequest extends NextApiRequest {
@@ -8,21 +7,10 @@ export interface AuthenticatedRequest extends NextApiRequest {
     email: string;
     role?: string;
     subscription?: {
-      plan: string;
+      tier: string;
       status: string;
     };
   };
-}
-
-const JWT_SECRET = process.env.SUPABASE_JWT_SECRET!;
-
-export async function verifyToken(token: string): Promise<any> {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    return decoded;
-  } catch (error) {
-    throw new Error('Invalid token');
-  }
 }
 
 export async function authenticateUser(
@@ -34,61 +22,68 @@ export async function authenticateUser(
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Missing or invalid authorization header' });
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Missing or invalid authorization header' });
+      }
       return;
     }
 
     const token = authHeader.substring(7);
 
-    // Verify token
-    const decoded = await verifyToken(token);
+    // Verify token with Supabase Auth
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     
-    if (!decoded.sub) {
-      res.status(401).json({ error: 'Invalid token payload' });
+    if (authError || !user) {
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Invalid or expired token' });
+      }
       return;
     }
 
-    // Get user from database
-    const { data: user, error: userError } = await (supabaseAdmin
-      .from('users') as any)
+    // Get user profile from database
+    const { data: profile, error: profileError } = await (supabaseAdmin
+      .from('user_profiles') as any)
       .select('*')
-      .eq('id', decoded.sub)
+      .eq('id', user.id)
       .single();
 
-    if (userError || !user) {
-      res.status(401).json({ error: 'User not found' });
+    if (profileError || !profile) {
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'User profile not found' });
+      }
       return;
     }
 
-    // Check if user is active
-    if (!user.is_active) {
-      res.status(403).json({ error: 'Account is disabled' });
-      return;
-    }
-
-    // Get user subscription
-    const { data: subscription } = await (supabaseAdmin
-      .from('subscriptions') as any)
+    // Check if user is banned (using moderation service)
+    const { data: violations } = await (supabaseAdmin
+      .from('user_violations') as any)
       .select('*')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .single();
 
+    if (violations) {
+      if (!res.headersSent) {
+        res.status(403).json({ error: 'Account is suspended' });
+      }
+      return;
+    }
+
     // Attach user to request
     req.user = {
       id: user.id,
-      email: user.email,
-      role: decoded.role || 'user',
-      subscription: subscription ? {
-        plan: subscription.plan_id,
-        status: subscription.status,
-      } : undefined,
+      email: user.email!,
+      role: user.role || 'user',
+      subscription: {
+        tier: profile.subscription_tier || 'free',
+        status: profile.subscription_status || 'active',
+      },
     };
 
-    // Update last login
+    // Update last seen
     await (supabaseAdmin
-      .from('users') as any)
-      .update({ last_login: new Date().toISOString() })
+      .from('user_profiles') as any)
+      .update({ last_seen_at: new Date().toISOString() })
       .eq('id', user.id);
 
     if (next) {
@@ -96,17 +91,22 @@ export async function authenticateUser(
     }
   } catch (error: any) {
     console.error('Authentication error:', error);
-    res.status(401).json({ error: error.message || 'Authentication failed' });
+    if (!res.headersSent) {
+      res.status(401).json({ error: error.message || 'Authentication failed' });
+    }
   }
 }
 
 export function requireAuth(handler: (req: AuthenticatedRequest, res: NextApiResponse) => Promise<void>) {
   return async (req: AuthenticatedRequest, res: NextApiResponse) => {
-    await new Promise<void>((resolve, reject) => {
-      authenticateUser(req, res, () => resolve());
+    await new Promise<void>((resolve) => {
+      authenticateUser(req, res, () => resolve()).then(() => resolve(), () => resolve());
     });
 
     if (!req.user) {
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Authentication required' });
+      }
       return;
     }
 
@@ -115,21 +115,35 @@ export function requireAuth(handler: (req: AuthenticatedRequest, res: NextApiRes
 }
 
 export function requireSubscription(
-  requiredPlans: string[] = ['basic', 'pro', 'enterprise']
+  requiredTiers: string[] = ['free', 'pro', 'enterprise']
 ) {
   return function (handler: (req: AuthenticatedRequest, res: NextApiResponse) => Promise<void>) {
     return requireAuth(async (req: AuthenticatedRequest, res: NextApiResponse) => {
       if (!req.user?.subscription) {
-        res.status(403).json({ error: 'Active subscription required' });
+        if (!res.headersSent) {
+          res.status(403).json({ error: 'Active subscription required' });
+        }
         return;
       }
 
-      if (!requiredPlans.includes(req.user.subscription.plan)) {
-        res.status(403).json({ 
-          error: 'Insufficient subscription plan',
-          required: requiredPlans,
-          current: req.user.subscription.plan,
-        });
+      if (!requiredTiers.includes(req.user.subscription.tier)) {
+        if (!res.headersSent) {
+          res.status(403).json({ 
+            error: 'Insufficient subscription tier',
+            required: requiredTiers,
+            current: req.user.subscription.tier,
+          });
+        }
+        return;
+      }
+
+      if (req.user.subscription.status !== 'active') {
+        if (!res.headersSent) {
+          res.status(403).json({ 
+            error: 'Subscription is not active',
+            status: req.user.subscription.status,
+          });
+        }
         return;
       }
 
@@ -142,11 +156,13 @@ export function requireRole(roles: string[]) {
   return function (handler: (req: AuthenticatedRequest, res: NextApiResponse) => Promise<void>) {
     return requireAuth(async (req: AuthenticatedRequest, res: NextApiResponse) => {
       if (!req.user?.role || !roles.includes(req.user.role)) {
-        res.status(403).json({ 
-          error: 'Insufficient permissions',
-          required: roles,
-          current: req.user?.role,
-        });
+        if (!res.headersSent) {
+          res.status(403).json({ 
+            error: 'Insufficient permissions',
+            required: roles,
+            current: req.user?.role,
+          });
+        }
         return;
       }
 
@@ -165,7 +181,9 @@ export async function authenticateApiKey(
     const apiKey = req.headers['x-api-key'] as string;
     
     if (!apiKey) {
-      res.status(401).json({ error: 'Missing API key' });
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Missing API key' });
+      }
       return;
     }
 
@@ -178,33 +196,43 @@ export async function authenticateApiKey(
       .single();
 
     if (error || !apiKeyData) {
-      res.status(401).json({ error: 'Invalid API key' });
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Invalid API key' });
+      }
       return;
     }
 
     // Check if key is expired
     if (apiKeyData.expires_at && new Date(apiKeyData.expires_at) < new Date()) {
-      res.status(401).json({ error: 'API key expired' });
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'API key expired' });
+      }
       return;
     }
 
-    // Get associated user
-    const { data: user, error: userError } = await (supabaseAdmin
-      .from('users') as any)
+    // Get associated user profile
+    const { data: profile, error: profileError } = await (supabaseAdmin
+      .from('user_profiles') as any)
       .select('*')
       .eq('id', apiKeyData.user_id)
       .single();
 
-    if (userError || !user) {
-      res.status(401).json({ error: 'User not found' });
+    if (profileError || !profile) {
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'User not found' });
+      }
       return;
     }
 
     // Attach user to request
     req.user = {
-      id: user.id,
-      email: user.email,
+      id: profile.id,
+      email: profile.email,
       role: 'service',
+      subscription: {
+        tier: profile.subscription_tier || 'free',
+        status: profile.subscription_status || 'active',
+      },
     };
 
     // Update API key last used
@@ -218,7 +246,9 @@ export async function authenticateApiKey(
     }
   } catch (error: any) {
     console.error('API key authentication error:', error);
-    res.status(401).json({ error: 'Authentication failed' });
+    if (!res.headersSent) {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
   }
 }
 
@@ -228,12 +258,12 @@ export function authenticate(handler: (req: AuthenticatedRequest, res: NextApiRe
     // Check for API key first
     if (req.headers['x-api-key']) {
       await new Promise<void>((resolve) => {
-        authenticateApiKey(req, res, () => resolve());
+        authenticateApiKey(req, res, () => resolve()).then(() => resolve(), () => resolve());
       });
     } else {
       // Fall back to JWT authentication
       await new Promise<void>((resolve) => {
-        authenticateUser(req, res, () => resolve());
+        authenticateUser(req, res, () => resolve()).then(() => resolve(), () => resolve());
       });
     }
 

@@ -9,7 +9,10 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   }
 
   try {
-    await authService.signOut(req.user!.id);
+    // Get the access token from the request header
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.substring(7) || '';
+    await authService.signOut(token);
     
     // Clear cookies
     res.setHeader('Set-Cookie', [

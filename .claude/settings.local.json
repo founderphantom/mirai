@@ -27,7 +27,8 @@
       "Bash(mv:*)",
       "Bash(for:*)",
       "Bash(done)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(pnpm test:*)"
     ],
     "deny": [],
     "ask": []

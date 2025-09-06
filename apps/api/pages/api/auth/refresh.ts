@@ -14,17 +14,22 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { refreshToken } = req.body;
 
   try {
-    const tokens = await authService.refreshTokens(refreshToken);
+    const session = await authService.refreshTokens(refreshToken);
     
     // Set new cookies
     res.setHeader('Set-Cookie', [
-      `access_token=${tokens.accessToken}; HttpOnly; Path=/; Max-Age=900; SameSite=Strict`,
-      `refresh_token=${tokens.refreshToken}; HttpOnly; Path=/; Max-Age=604800; SameSite=Strict`,
+      `access_token=${session.access_token}; HttpOnly; Path=/; Max-Age=${session.expires_in}; SameSite=Strict`,
+      `refresh_token=${session.refresh_token}; HttpOnly; Path=/; Max-Age=604800; SameSite=Strict`,
     ]);
 
     res.status(200).json({
       success: true,
-      accessToken: tokens.accessToken,
+      session: {
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        expires_in: session.expires_in,
+        token_type: session.token_type,
+      },
     });
   } catch (error: any) {
     res.status(401).json({
