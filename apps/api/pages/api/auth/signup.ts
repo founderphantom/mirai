@@ -22,14 +22,19 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     
     // Set cookies for tokens
     res.setHeader('Set-Cookie', [
-      `access_token=${result.accessToken}; HttpOnly; Path=/; Max-Age=900; SameSite=Strict`,
-      `refresh_token=${result.refreshToken}; HttpOnly; Path=/; Max-Age=604800; SameSite=Strict`,
+      `access_token=${result.session.access_token}; HttpOnly; Path=/; Max-Age=${result.session.expires_in}; SameSite=Strict`,
+      `refresh_token=${result.session.refresh_token}; HttpOnly; Path=/; Max-Age=604800; SameSite=Strict`,
     ]);
 
     res.status(201).json({
       success: true,
       user: result.user,
-      accessToken: result.accessToken,
+      session: {
+        access_token: result.session.access_token,
+        refresh_token: result.session.refresh_token,
+        expires_in: result.session.expires_in,
+        token_type: result.session.token_type,
+      },
     });
   } catch (error: any) {
     res.status(400).json({

@@ -1,80 +1,58 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { nanoid } from 'nanoid';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Database, UserProfile } from '@/types/database';
 import { subscriptionService } from './subscription.service';
 import { moderationService } from './moderation.service';
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.SUPABASE_JWT_SECRET!;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || process.env.SUPABASE_JWT_SECRET!;
-const JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';
-const JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
-
 export class AuthService {
-  // Generate tokens
-  private generateTokens(userId: string, email: string, role = 'user') {
-    const accessToken = jwt.sign(
-      { sub: userId, email, role, type: 'access' },
-      JWT_ACCESS_SECRET,
-      { expiresIn: JWT_ACCESS_EXPIRY }
-    );
-
-    const refreshToken = jwt.sign(
-      { sub: userId, email, type: 'refresh' },
-      JWT_REFRESH_SECRET,
-      { expiresIn: JWT_REFRESH_EXPIRY }
-    );
-
-    return { accessToken, refreshToken };
-  }
 
   // Sign up new user
   async signUp(email: string, password: string, metadata?: any) {
     try {
-      // Check if user already exists
-      const { data: existingUser } = await (supabaseAdmin
-      .from('user_profiles') as any)
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (existingUser) {
-        throw new Error('User already exists');
-      }
-
       // Create auth user with Supabase Auth
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
         email,
         password,
-        email_confirm: true,
-        user_metadata: metadata,
+        options: {
+          data: metadata,
+          emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`,
+        },
       });
 
       if (authError) {
         throw authError;
       }
 
-      // Create user profile with subscription info
-      const profile = await subscriptionService.upsertUserProfile({
-        id: authData.user.id,
-        email,
-        full_name: metadata?.full_name || null,
-        avatar_url: metadata?.avatar_url || null,
-      });
-
-      if (!profile) {
-        // Rollback auth user if profile creation fails
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-        throw new Error('Failed to create user profile');
+      if (!authData.user || !authData.session) {
+        throw new Error('Failed to create user session');
       }
 
-      // Generate tokens
-      const tokens = this.generateTokens(profile.id, profile.email);
+      // The database trigger automatically creates user_profile
+      // Wait a moment for the trigger to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Get the created user profile
+      const profile = await subscriptionService.getUserProfile(authData.user.id);
+
+      if (!profile) {
+        // If profile wasn't created by trigger, create it manually
+        const manualProfile = await subscriptionService.upsertUserProfile({
+          id: authData.user.id,
+          email,
+          full_name: metadata?.full_name || null,
+          avatar_url: metadata?.avatar_url || null,
+        });
+
+        if (!manualProfile) {
+          // Rollback auth user if profile creation fails
+          await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+          throw new Error('Failed to create user profile');
+        }
+      }
 
       // Create welcome notification
       await this.createNotification(
-        profile.id,
+        authData.user.id,
         'welcome',
         'Welcome to AIRI!',
         'Your AI companion is ready to assist you. Start your first conversation now!'
@@ -82,13 +60,18 @@ export class AuthService {
 
       return {
         user: {
-          id: profile.id,
-          email: profile.email,
-          created_at: profile.created_at,
-          subscription_tier: profile.subscription_tier,
-          subscription_status: profile.subscription_status,
+          id: authData.user.id,
+          email: authData.user.email!,
+          created_at: authData.user.created_at,
+          subscription_tier: profile?.subscription_tier || 'free',
+          subscription_status: profile?.subscription_status || 'active',
         },
-        ...tokens,
+        session: {
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+          expires_in: authData.session.expires_in,
+          token_type: authData.session.token_type,
+        },
       };
     } catch (error: any) {
       console.error('Sign up error:', error);
@@ -109,6 +92,10 @@ export class AuthService {
         throw new Error('Invalid credentials');
       }
 
+      if (!authData.user || !authData.session) {
+        throw new Error('Failed to create session');
+      }
+
       // Get user profile from database
       const profile = await subscriptionService.getUserProfile(authData.user.id);
 
@@ -122,17 +109,14 @@ export class AuthService {
         throw new Error(banStatus.reason || 'Account is disabled');
       }
 
-      // Update last message at (used for tracking activity)
+      // Update last seen (used for tracking activity)
       await (supabaseAdmin
       .from('user_profiles') as any)
         .update({ 
-          last_message_at: new Date().toISOString(),
+          last_seen_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', profile.id);
-
-      // Generate tokens
-      const tokens = this.generateTokens(profile.id, profile.email);
 
       return {
         user: {
@@ -145,7 +129,12 @@ export class AuthService {
           daily_message_count: profile.daily_message_count,
           total_message_count: profile.total_message_count,
         },
-        ...tokens,
+        session: {
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+          expires_in: authData.session.expires_in,
+          token_type: authData.session.token_type,
+        },
       };
     } catch (error: any) {
       console.error('Sign in error:', error);
@@ -154,17 +143,15 @@ export class AuthService {
   }
 
   // Sign out user
-  async signOut(userId: string) {
+  async signOut(accessToken: string) {
     try {
-      // Sign out from Supabase Auth
-      const { error } = await supabaseAdmin.auth.admin.signOut(userId);
+      // Sign out from Supabase Auth using the JWT token
+      const { error } = await supabaseAdmin.auth.signOut(accessToken);
       
       if (error) {
         throw error;
       }
 
-      // Invalidate any active sessions (you might want to implement a session table)
-      // For now, we'll just return success
       return { success: true };
     } catch (error: any) {
       console.error('Sign out error:', error);
@@ -175,15 +162,21 @@ export class AuthService {
   // Refresh tokens
   async refreshTokens(refreshToken: string) {
     try {
-      // Verify refresh token
-      const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as any;
-      
-      if (decoded.type !== 'refresh') {
-        throw new Error('Invalid token type');
+      // Use Supabase Auth to refresh the session
+      const { data, error } = await supabaseAdmin.auth.refreshSession({
+        refresh_token: refreshToken,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.session) {
+        throw new Error('Failed to refresh session');
       }
 
       // Get user profile from database
-      const profile = await subscriptionService.getUserProfile(decoded.sub);
+      const profile = await subscriptionService.getUserProfile(data.user!.id);
 
       if (!profile) {
         throw new Error('User not found');
@@ -195,12 +188,18 @@ export class AuthService {
         throw new Error('Account is disabled');
       }
 
-      // Generate new tokens
-      const tokens = this.generateTokens(profile.id, profile.email);
-
-      return tokens;
+      return {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_in: data.session.expires_in,
+        token_type: data.session.token_type,
+      };
     } catch (error: any) {
       console.error('Token refresh error:', error);
+      // Pass through specific error messages
+      if (error.message === 'Account is disabled') {
+        throw error;
+      }
       throw new Error('Invalid refresh token');
     }
   }
@@ -239,6 +238,10 @@ export class AuthService {
       };
     } catch (error: any) {
       console.error('Get session error:', error);
+      // Pass through specific error messages
+      if (error.message === 'User not found' || error.message.includes('disabled') || error.message.includes('Suspended')) {
+        throw error;
+      }
       throw new Error('Failed to get session');
     }
   }
@@ -278,38 +281,24 @@ export class AuthService {
   }
 
   // Update password
-  async updatePassword(userId: string, currentPassword: string, newPassword: string) {
+  async updatePassword(accessToken: string, newPassword: string) {
     try {
-      // Get user profile
-      const profile = await subscriptionService.getUserProfile(userId);
-
-      if (!profile) {
-        throw new Error('User not found');
-      }
-
-      // Verify current password
-      const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
-        email: profile.email,
-        password: currentPassword,
+      // Update password using the user's access token
+      const { data, error } = await supabaseAdmin.auth.updateUser(accessToken, {
+        password: newPassword,
       });
 
-      if (signInError) {
-        throw new Error('Current password is incorrect');
+      if (error) {
+        throw error;
       }
 
-      // Update password
-      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-        userId,
-        { password: newPassword }
-      );
-
-      if (updateError) {
-        throw updateError;
+      if (!data.user) {
+        throw new Error('Failed to update password');
       }
 
       // Create notification
       await this.createNotification(
-        userId,
+        data.user.id,
         'password_changed',
         'Password Changed',
         'Your password has been successfully updated.'
