@@ -27,10 +27,10 @@ export async function rateLimit(
     let limiter = rateLimiters.free;
     
     if (req.user?.subscription) {
-      const plan = req.user.subscription.plan;
-      if (plan === 'basic') limiter = rateLimiters.basic;
-      else if (plan === 'pro') limiter = rateLimiters.pro;
-      else if (plan === 'enterprise') limiter = rateLimiters.enterprise;
+      const tier = req.user.subscription.tier;
+      if (tier === 'basic') limiter = rateLimiters.basic;
+      else if (tier === 'pro') limiter = rateLimiters.pro;
+      else if (tier === 'enterprise') limiter = rateLimiters.enterprise;
     }
 
     // Check rate limit

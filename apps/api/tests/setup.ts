@@ -27,6 +27,9 @@ process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_fake_k
 process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_fake_key';
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+// OpenAI API key is not needed in tests due to mocking
+// This ensures we never accidentally call the real API during tests
+delete process.env.OPENAI_API_KEY;
 
 // Mock console methods to reduce noise in tests
 global.console = {
