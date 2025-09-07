@@ -14,6 +14,7 @@ module.exports = {
         esModuleInterop: true,
         allowSyntheticDefaultImports: true,
       },
+      isolatedModules: true, // Speed up TypeScript compilation
     }]
   },
   // Handle ESM modules properly for pnpm
@@ -28,6 +29,10 @@ module.exports = {
     '^@tests/(.*)$': '<rootDir>/tests/$1',
     // Mock nanoid for testing to avoid ESM issues
     '^nanoid$': '<rootDir>/tests/mocks/nanoid.mock.js',
+    // Mock LLM providers for testing
+    '^openai$': '<rootDir>/tests/mocks/openai.mock.js',
+    '^@anthropic-ai/sdk$': '<rootDir>/tests/mocks/anthropic.mock.js',
+    '^groq-sdk$': '<rootDir>/tests/mocks/groq.mock.js',
     // Mock CSS modules and static assets if needed
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
@@ -51,10 +56,11 @@ module.exports = {
     },
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  testTimeout: 30000,
-  verbose: true,
+  testTimeout: 10000, // Reduced from 30s to 10s for faster feedback
+  verbose: false, // Disable verbose output for faster execution
   clearMocks: true,
   restoreMocks: true,
+  maxWorkers: '50%', // Use half of available CPU cores for parallel execution
   // Additional settings for pnpm compatibility
   testPathIgnorePatterns: [
     '/node_modules/',

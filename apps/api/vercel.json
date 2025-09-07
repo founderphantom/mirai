@@ -1,7 +1,10 @@
 {
-  "buildCommand": "pnpm run build",
+  "buildCommand": "turbo run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "installCommand": "cd ../.. && pnpm install",
-  "ignoreCommand": "exit 1"
+  "functions": {
+    "pages/api/*.ts": {
+      "maxDuration": 30
+    }
+  }
 }

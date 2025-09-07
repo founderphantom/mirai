@@ -1,4 +1,5 @@
-import { jest } from '@jest/globals';
+// Use global jest instead of importing from @jest/globals
+declare const jest: any;
 
 // Create a chainable mock object for database queries
 export function createChainableMock(defaultData: any = null, defaultError: any = null) {

@@ -6,7 +6,7 @@ export interface AuthenticatedRequest extends NextApiRequest {
     email: string;
     role?: string;
     subscription?: {
-      plan: string;
+      tier: string;
       status: string;
     };
   };
@@ -113,11 +113,11 @@ export const requireSubscription = jest.fn((plans: string[]) => {
         return;
       }
       
-      if (!plans.includes(req.user.subscription.plan)) {
+      if (!plans.includes(req.user.subscription.tier)) {
         res.status(403).json({ 
-          error: 'Insufficient subscription plan',
+          error: 'Insufficient subscription tier',
           required: plans,
-          current: req.user.subscription.plan
+          current: req.user.subscription.tier
         });
         return;
       }

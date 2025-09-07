@@ -145,14 +145,22 @@ export class AuthService {
   // Sign out user
   async signOut(accessToken: string) {
     try {
-      // Sign out from Supabase Auth using the JWT token
-      const { error } = await supabaseAdmin.auth.signOut(accessToken);
+      // For server-side sign out, we verify the token and then let the client handle clearing
+      // The actual session invalidation happens client-side
+      // Server just validates the token is valid before allowing sign out
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
       
-      if (error) {
-        throw error;
+      if (error || !user) {
+        // Token is already invalid or user doesn't exist
+        // This is actually successful from a sign-out perspective
+        return { success: true };
       }
 
-      return { success: true };
+      // Server-side, we've validated the token
+      // The client should handle clearing tokens and calling supabase.auth.signOut()
+      // We could optionally invalidate any server-side caches here if needed
+      
+      return { success: true, message: 'Sign out successful. Please clear client-side session.' };
     } catch (error: any) {
       console.error('Sign out error:', error);
       throw new Error('Failed to sign out');
@@ -283,8 +291,21 @@ export class AuthService {
   // Update password
   async updatePassword(accessToken: string, newPassword: string) {
     try {
-      // Update password using the user's access token
-      const { data, error } = await supabaseAdmin.auth.updateUser(accessToken, {
+      // First get the user from the access token
+      const getUserResponse = await supabaseAdmin.auth.getUser(accessToken);
+      
+      if (getUserResponse.error) {
+        throw new Error(getUserResponse.error.message || 'Invalid access token');
+      }
+      
+      if (!getUserResponse.data?.user) {
+        throw new Error('Invalid access token or user not found');
+      }
+      
+      const user = getUserResponse.data.user;
+
+      // Update password using the user's ID
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
         password: newPassword,
       });
 

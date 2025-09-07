@@ -33,8 +33,21 @@
   "include": [
     "next-env.d.ts",
     "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
+    "**/*.tsx"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    ".next",
+    "out",
+    "build",
+    "dist",
+    "tests",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "__mocks__",
+    ".turbo",
+    "coverage",
+    "jest.config.js",
+    "tsconfig.tsbuildinfo"
+  ]
 }

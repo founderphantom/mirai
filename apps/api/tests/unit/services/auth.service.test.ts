@@ -442,7 +442,16 @@ describe('AuthService', () => {
     it('should update password with valid current password', async () => {
       const testUser = testUsers.free;
       
-      (supabaseAdmin.auth.updateUser as jest.Mock).mockResolvedValue({
+      // Mock getUser to validate the access token
+      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
+        data: { 
+          user: { ...mockAuthUser, id: testUser.id }
+        },
+        error: null,
+      });
+      
+      // Mock admin.updateUserById for the actual password update
+      (supabaseAdmin.auth.admin.updateUserById as jest.Mock).mockResolvedValue({
         data: { 
           user: { ...mockAuthUser, id: testUser.id }
         },
@@ -456,14 +465,16 @@ describe('AuthService', () => {
       const result = await authService.updatePassword('valid-access-token', 'NewPassword123!');
       
       expect(result).toEqual({ success: true });
-      expect(supabaseAdmin.auth.updateUser).toHaveBeenCalledWith(
-        'valid-access-token',
+      expect(supabaseAdmin.auth.getUser).toHaveBeenCalledWith('valid-access-token');
+      expect(supabaseAdmin.auth.admin.updateUserById).toHaveBeenCalledWith(
+        testUser.id,
         { password: 'NewPassword123!' }
       );
     });
 
     it('should reject update with incorrect current password', async () => {
-      (supabaseAdmin.auth.updateUser as jest.Mock).mockResolvedValue({
+      // Mock getUser to fail with invalid token
+      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
         data: null,
         error: { message: 'Invalid access token' },
       });
