@@ -1,7 +1,7 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { User, Session } from '@supabase/supabase-js'
-import { supabase, authHelpers } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { userAPI, type UserProfile } from '@/lib/api'
 
 // Global auth state
@@ -15,60 +15,86 @@ const initialized = ref(false)
 async function initializeAuth() {
   if (initialized.value) return
   
+  loading.value = true
+  
   try {
     // Get initial session
-    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    const { data: { session: currentSession }, error } = await supabase.auth.getSession()
+    
+    if (error) {
+      console.error('Error getting session:', error)
+    }
+    
+    // Update state immediately
     session.value = currentSession
     user.value = currentSession?.user ?? null
     
     // Fetch user profile if authenticated
     if (currentSession?.user) {
-      userProfile.value = await userAPI.getProfile()
-      
-      // Create profile if it doesn't exist (first time login)
-      if (!userProfile.value) {
-        userProfile.value = await userAPI.upsertProfile({
-          email: currentSession.user.email!,
-          display_name: currentSession.user.user_metadata?.full_name || currentSession.user.email?.split('@')[0],
-          avatar_url: currentSession.user.user_metadata?.avatar_url,
-        })
-      }
-      
-      // Update last seen
-      await userAPI.updateLastSeen()
-    }
-    
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange(async (event, newSession) => {
-      session.value = newSession
-      user.value = newSession?.user ?? null
-      
-      if (event === 'SIGNED_IN' && newSession?.user) {
-        // Fetch or create user profile on sign in
+      try {
         userProfile.value = await userAPI.getProfile()
         
+        // Create profile if it doesn't exist (first time login)
         if (!userProfile.value) {
           userProfile.value = await userAPI.upsertProfile({
-            email: newSession.user.email!,
-            display_name: newSession.user.user_metadata?.full_name || newSession.user.email?.split('@')[0],
-            avatar_url: newSession.user.user_metadata?.avatar_url,
+            email: currentSession.user.email!,
+            display_name: currentSession.user.user_metadata?.full_name || currentSession.user.email?.split('@')[0],
+            avatar_url: currentSession.user.user_metadata?.avatar_url,
           })
         }
         
         // Update last seen
         await userAPI.updateLastSeen()
+      } catch (profileError) {
+        console.error('Error fetching/creating user profile:', profileError)
+      }
+    }
+    
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      console.log('Auth state changed:', event, newSession?.user?.email)
+      
+      // Update state immediately
+      session.value = newSession
+      user.value = newSession?.user ?? null
+      
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        // Fetch or create user profile on sign in
+        try {
+          userProfile.value = await userAPI.getProfile()
+          
+          if (!userProfile.value) {
+            userProfile.value = await userAPI.upsertProfile({
+              email: newSession.user.email!,
+              display_name: newSession.user.user_metadata?.full_name || newSession.user.email?.split('@')[0],
+              avatar_url: newSession.user.user_metadata?.avatar_url,
+            })
+          }
+          
+          // Update last seen
+          await userAPI.updateLastSeen()
+        } catch (profileError) {
+          console.error('Error handling sign in:', profileError)
+        }
       } else if (event === 'SIGNED_OUT') {
         userProfile.value = null
-        
-        // Redirect to login if not already there
-        if (window.location.pathname !== '/auth/login') {
-          window.location.href = '/auth/login'
-        }
+        // Don't redirect here, let the route guards handle it
       } else if (event === 'USER_UPDATED' && newSession?.user) {
         // Refresh user profile when user is updated
-        userProfile.value = await userAPI.getProfile()
+        try {
+          userProfile.value = await userAPI.getProfile()
+        } catch (profileError) {
+          console.error('Error updating user profile:', profileError)
+        }
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('Token refreshed successfully')
       }
     })
+    
+    // Store subscription for cleanup if needed
+    if (subscription) {
+      // Store subscription reference if needed for cleanup
+    }
     
     initialized.value = true
   } catch (error) {
@@ -79,7 +105,6 @@ async function initializeAuth() {
 }
 
 export function useAuth() {
-  const router = useRouter()
   
   // Computed properties
   const isAuthenticated = computed(() => !!user.value)
@@ -90,98 +115,130 @@ export function useAuth() {
   
   // Auth methods
   const signInWithEmail = async (email: string, password: string, rememberMe = false) => {
-    loading.value = true
     try {
-      const data = await authHelpers.signInWithEmail(email, password)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
       
-      // Handle remember me by setting session expiry
-      if (!rememberMe && data.session) {
-        // Set session to expire in 24 hours if not remembering
-        await supabase.auth.updateUser({
-          data: { session_duration: 86400 }
-        })
+      if (error) {
+        console.error('Sign in error:', error)
+        return { data: null, error: error.message }
       }
+      
+      // The session will be handled by onAuthStateChange
+      // No need to manually update state here
       
       return { data, error: null }
     } catch (error: any) {
+      console.error('Unexpected sign in error:', error)
       return { data: null, error: error.message || 'Failed to sign in' }
-    } finally {
-      loading.value = false
     }
   }
   
   const signUpWithEmail = async (email: string, password: string, metadata?: { display_name?: string }) => {
-    loading.value = true
     try {
-      const data = await authHelpers.signUpWithEmail(email, password)
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: metadata,
+        },
+      })
       
-      // Create user profile after successful signup
-      if (data.user && !data.user.identities?.length) {
-        // User already exists
-        return { data, error: 'User already exists' }
+      if (error) {
+        console.error('Sign up error:', error)
+        return { data: null, error: error.message }
       }
       
-      if (data.user) {
-        await userAPI.upsertProfile({
-          email: data.user.email!,
-          display_name: metadata?.display_name || email.split('@')[0],
-        })
+      // Check if user already exists
+      if (data.user && !data.user.identities?.length) {
+        return { data, error: 'User already exists' }
       }
       
       return { data, error: null }
     } catch (error: any) {
+      console.error('Unexpected sign up error:', error)
       return { data: null, error: error.message || 'Failed to sign up' }
-    } finally {
-      loading.value = false
     }
   }
   
   const signInWithOAuth = async (provider: 'google' | 'discord') => {
-    loading.value = true
     try {
-      const data = await authHelpers.signInWithOAuth(provider)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      
+      if (error) {
+        console.error('OAuth sign in error:', error)
+        return { data: null, error: error.message }
+      }
+      
       return { data, error: null }
     } catch (error: any) {
+      console.error('Unexpected OAuth sign in error:', error)
       return { data: null, error: error.message || 'Failed to sign in with ' + provider }
-    } finally {
-      loading.value = false
     }
   }
   
   const signOut = async () => {
-    loading.value = true
     try {
-      await authHelpers.signOut()
-      await router.push('/auth/login')
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error('Sign out error:', error)
+        return { error: error.message }
+      }
+      
+      // Clear local state
+      user.value = null
+      session.value = null
+      userProfile.value = null
+      
+      // Let the route guards handle navigation
       return { error: null }
     } catch (error: any) {
+      console.error('Unexpected sign out error:', error)
       return { error: error.message || 'Failed to sign out' }
-    } finally {
-      loading.value = false
     }
   }
   
   const resetPassword = async (email: string) => {
-    loading.value = true
     try {
-      const data = await authHelpers.resetPassword(email)
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      })
+      
+      if (error) {
+        console.error('Reset password error:', error)
+        return { data: null, error: error.message }
+      }
+      
       return { data, error: null }
     } catch (error: any) {
+      console.error('Unexpected reset password error:', error)
       return { data: null, error: error.message || 'Failed to send reset email' }
-    } finally {
-      loading.value = false
     }
   }
   
   const updatePassword = async (newPassword: string) => {
-    loading.value = true
     try {
-      const data = await authHelpers.updatePassword(newPassword)
+      const { data, error } = await supabase.auth.updateUser({
+        password: newPassword,
+      })
+      
+      if (error) {
+        console.error('Update password error:', error)
+        return { data: null, error: error.message }
+      }
+      
       return { data, error: null }
     } catch (error: any) {
+      console.error('Unexpected update password error:', error)
       return { data: null, error: error.message || 'Failed to update password' }
-    } finally {
-      loading.value = false
     }
   }
   

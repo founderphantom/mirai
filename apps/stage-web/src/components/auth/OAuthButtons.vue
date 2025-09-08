@@ -124,18 +124,20 @@ const handleOAuthLogin = async (provider: Provider) => {
   emit('auth-start', provider)
   
   try {
-    const { error } = await signInWithOAuth(provider)
+    const { data, error } = await signInWithOAuth(provider)
     
     if (error) {
       // Handle specific OAuth errors
       let errorMessage = 'Authentication failed. Please try again.'
       
-      if (error.includes('User cancelled')) {
+      if (error.includes('User cancelled') || error.includes('access_denied')) {
         errorMessage = 'Authentication cancelled'
       } else if (error.includes('Invalid credentials')) {
         errorMessage = 'Invalid credentials. Please check your account.'
       } else if (error.includes('rate limit')) {
         errorMessage = 'Too many attempts. Please try again later.'
+      } else {
+        errorMessage = error
       }
       
       toast.error(errorMessage)
@@ -145,8 +147,17 @@ const handleOAuthLogin = async (provider: Provider) => {
     }
     
     // Success - the redirect will be handled by Supabase OAuth flow
-    emit('auth-success', provider)
-    toast.success(`Signing in with ${provider}...`)
+    // The URL is returned in data.url for the OAuth redirect
+    if (data?.url) {
+      emit('auth-success', provider)
+      toast.success(`Redirecting to ${provider}...`)
+      // The browser will redirect automatically
+    } else {
+      // Shouldn't happen, but handle it
+      toast.error('Failed to initiate OAuth flow')
+      emit('auth-error', provider, 'Failed to get OAuth URL')
+      loadingProvider.value = null
+    }
     
   } catch (err) {
     console.error(`OAuth error with ${provider}:`, err)
