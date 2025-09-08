@@ -5,7 +5,7 @@ import { getOAuthCallbackUrl, getPasswordResetUrl } from './utils/url'
 const supabaseUrl = 'https://sgupizcxhxohouklbntm.supabase.co'
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNndXBpemN4aHhvaG91a2xibnRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY2ODE5MDksImV4cCI6MjA3MjI1NzkwOX0.3Lyk_oUG9Rm-IpEvRkhxpSvNenISkpNQsg2WAjI6Nk8'
 
-// Create Supabase client
+// Create Supabase client with best practice configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -13,7 +13,21 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: localStorage,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    flowType: 'pkce'
+    flowType: 'pkce', // PKCE flow for better security
+    debug: import.meta.env.DEV, // Enable debug logs only in development
+  },
+  global: {
+    headers: {
+      'x-application-name': 'airi-stage-web'
+    }
+  },
+  db: {
+    schema: 'public'
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
   }
 })
 

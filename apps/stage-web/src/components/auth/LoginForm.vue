@@ -272,7 +272,9 @@ const handleSubmit = async () => {
     await router.push(redirectTo.value)
     
   } catch (err) {
-    console.error('Login error:', err)
+    if (import.meta.env.DEV) {
+      console.error('[Auth] Login error:', err)
+    }
     error.value = 'An unexpected error occurred. Please try again.'
     isLoading.value = false
   }

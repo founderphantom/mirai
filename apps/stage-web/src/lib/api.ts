@@ -29,8 +29,10 @@ export const apiClient = ofetch.create({
       }
     }
     
-    // Log other errors
-    console.error('API Error:', error)
+    // Log other errors in development only
+    if (import.meta.env.DEV) {
+      console.error('[API] Error:', error)
+    }
   },
 })
 
@@ -63,7 +65,9 @@ export const userAPI = {
       .single()
     
     if (error) {
-      console.error('Error fetching user profile:', error)
+      if (import.meta.env.DEV) {
+        console.error('[API] Error fetching user profile:', error)
+      }
       return null
     }
     
@@ -86,7 +90,9 @@ export const userAPI = {
       .single()
     
     if (error) {
-      console.error('Error updating user profile:', error)
+      if (import.meta.env.DEV) {
+        console.error('[API] Error updating user profile:', error)
+      }
       return null
     }
     
@@ -110,7 +116,9 @@ export const userAPI = {
       .single()
     
     if (error) {
-      console.error('Error upserting user profile:', error)
+      if (import.meta.env.DEV) {
+        console.error('[API] Error upserting user profile:', error)
+      }
       return null
     }
     
@@ -126,7 +134,9 @@ export const userAPI = {
       .maybeSingle()
     
     if (error) {
-      console.error('Error checking username:', error)
+      if (import.meta.env.DEV) {
+        console.error('[API] Error checking username:', error)
+      }
       return false
     }
     

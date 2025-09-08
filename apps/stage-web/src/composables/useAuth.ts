@@ -1,15 +1,18 @@
-import { ref, computed } from 'vue'
+import { ref, computed, readonly, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
-import type { User, Session } from '@supabase/supabase-js'
+import type { User, Session, AuthChangeEvent, AuthError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { userAPI, type UserProfile } from '@/lib/api'
+import { SessionManager } from '@/lib/session-manager'
+import { getAuthErrorMessage, logAuthError } from '@/lib/auth-errors'
 
-// Global auth state
-const user = ref<User | null>(null)
-const session = ref<Session | null>(null)
-const userProfile = ref<UserProfile | null>(null)
+// Global auth state - using shallowRef for better performance with large objects
+const user = shallowRef<User | null>(null)
+const session = shallowRef<Session | null>(null)
+const userProfile = shallowRef<UserProfile | null>(null)
 const loading = ref(true)
 const initialized = ref(false)
+let authSubscription: { unsubscribe: () => void } | null = null
 
 // Initialize auth state
 async function initializeAuth() {
@@ -21,13 +24,18 @@ async function initializeAuth() {
     // Get initial session
     const { data: { session: currentSession }, error } = await supabase.auth.getSession()
     
-    if (error) {
-      console.error('Error getting session:', error)
+    if (error && import.meta.env.DEV) {
+      console.error('[Auth] Error getting session:', error)
     }
     
     // Update state immediately
     session.value = currentSession
     user.value = currentSession?.user ?? null
+    
+    // Start auto-refresh if we have a session
+    if (currentSession) {
+      SessionManager.startAutoRefresh(currentSession)
+    }
     
     // Fetch user profile if authenticated
     if (currentSession?.user) {
@@ -46,17 +54,28 @@ async function initializeAuth() {
         // Update last seen
         await userAPI.updateLastSeen()
       } catch (profileError) {
-        console.error('Error fetching/creating user profile:', profileError)
+        if (import.meta.env.DEV) {
+          console.error('[Auth] Error fetching/creating user profile:', profileError)
+        }
       }
     }
     
     // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log('Auth state changed:', event, newSession?.user?.email)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, newSession: Session | null) => {
+      if (import.meta.env.DEV) {
+        console.info('[Auth] State changed:', event)
+      }
       
       // Update state immediately
       session.value = newSession
       user.value = newSession?.user ?? null
+      
+      // Manage session refresh
+      if (newSession) {
+        SessionManager.startAutoRefresh(newSession)
+      } else {
+        SessionManager.stopAutoRefresh()
+      }
       
       if (event === 'SIGNED_IN' && newSession?.user) {
         // Fetch or create user profile on sign in
@@ -74,31 +93,37 @@ async function initializeAuth() {
           // Update last seen
           await userAPI.updateLastSeen()
         } catch (profileError) {
-          console.error('Error handling sign in:', profileError)
+          if (import.meta.env.DEV) {
+            console.error('[Auth] Error handling sign in:', profileError)
+          }
         }
       } else if (event === 'SIGNED_OUT') {
         userProfile.value = null
+        SessionManager.stopAutoRefresh()
+        SessionManager.clearAuthStorage()
         // Don't redirect here, let the route guards handle it
       } else if (event === 'USER_UPDATED' && newSession?.user) {
         // Refresh user profile when user is updated
         try {
           userProfile.value = await userAPI.getProfile()
         } catch (profileError) {
-          console.error('Error updating user profile:', profileError)
+          if (import.meta.env.DEV) {
+            console.error('[Auth] Error updating user profile:', profileError)
+          }
         }
-      } else if (event === 'TOKEN_REFRESHED') {
-        console.log('Token refreshed successfully')
+      } else if (event === 'TOKEN_REFRESHED' && import.meta.env.DEV) {
+        console.info('[Auth] Token refreshed successfully')
       }
     })
     
-    // Store subscription for cleanup if needed
-    if (subscription) {
-      // Store subscription reference if needed for cleanup
-    }
+    // Store subscription for cleanup
+    authSubscription = subscription
     
     initialized.value = true
   } catch (error) {
-    console.error('Failed to initialize auth:', error)
+    if (import.meta.env.DEV) {
+      console.error('[Auth] Failed to initialize:', error)
+    }
   } finally {
     loading.value = false
   }
@@ -122,8 +147,8 @@ export function useAuth() {
       })
       
       if (error) {
-        console.error('Sign in error:', error)
-        return { data: null, error: error.message }
+        logAuthError('signInWithEmail', error)
+        return { data: null, error: getAuthErrorMessage(error) }
       }
       
       // The session will be handled by onAuthStateChange
@@ -131,8 +156,8 @@ export function useAuth() {
       
       return { data, error: null }
     } catch (error: any) {
-      console.error('Unexpected sign in error:', error)
-      return { data: null, error: error.message || 'Failed to sign in' }
+      logAuthError('signInWithEmail', error)
+      return { data: null, error: getAuthErrorMessage(error) }
     }
   }
   
@@ -147,8 +172,8 @@ export function useAuth() {
       })
       
       if (error) {
-        console.error('Sign up error:', error)
-        return { data: null, error: error.message }
+        logAuthError('signUpWithEmail', error)
+        return { data: null, error: getAuthErrorMessage(error) }
       }
       
       // Check if user already exists
@@ -158,8 +183,8 @@ export function useAuth() {
       
       return { data, error: null }
     } catch (error: any) {
-      console.error('Unexpected sign up error:', error)
-      return { data: null, error: error.message || 'Failed to sign up' }
+      logAuthError('signUpWithEmail', error)
+      return { data: null, error: getAuthErrorMessage(error) }
     }
   }
   
@@ -173,14 +198,14 @@ export function useAuth() {
       })
       
       if (error) {
-        console.error('OAuth sign in error:', error)
-        return { data: null, error: error.message }
+        logAuthError('signInWithOAuth', error)
+        return { data: null, error: getAuthErrorMessage(error) }
       }
       
       return { data, error: null }
     } catch (error: any) {
-      console.error('Unexpected OAuth sign in error:', error)
-      return { data: null, error: error.message || 'Failed to sign in with ' + provider }
+      logAuthError('signInWithOAuth', error)
+      return { data: null, error: getAuthErrorMessage(error) }
     }
   }
   
@@ -189,8 +214,8 @@ export function useAuth() {
       const { error } = await supabase.auth.signOut()
       
       if (error) {
-        console.error('Sign out error:', error)
-        return { error: error.message }
+        logAuthError('signOut', error)
+        return { error: getAuthErrorMessage(error) }
       }
       
       // Clear local state
@@ -201,8 +226,8 @@ export function useAuth() {
       // Let the route guards handle navigation
       return { error: null }
     } catch (error: any) {
-      console.error('Unexpected sign out error:', error)
-      return { error: error.message || 'Failed to sign out' }
+      logAuthError('signOut', error)
+      return { error: getAuthErrorMessage(error) }
     }
   }
   
@@ -213,14 +238,14 @@ export function useAuth() {
       })
       
       if (error) {
-        console.error('Reset password error:', error)
-        return { data: null, error: error.message }
+        logAuthError('resetPassword', error)
+        return { data: null, error: getAuthErrorMessage(error) }
       }
       
       return { data, error: null }
     } catch (error: any) {
-      console.error('Unexpected reset password error:', error)
-      return { data: null, error: error.message || 'Failed to send reset email' }
+      logAuthError('resetPassword', error)
+      return { data: null, error: getAuthErrorMessage(error) }
     }
   }
   
@@ -231,14 +256,14 @@ export function useAuth() {
       })
       
       if (error) {
-        console.error('Update password error:', error)
-        return { data: null, error: error.message }
+        logAuthError('updatePassword', error)
+        return { data: null, error: getAuthErrorMessage(error) }
       }
       
       return { data, error: null }
     } catch (error: any) {
-      console.error('Unexpected update password error:', error)
-      return { data: null, error: error.message || 'Failed to update password' }
+      logAuthError('updatePassword', error)
+      return { data: null, error: getAuthErrorMessage(error) }
     }
   }
   
@@ -277,17 +302,26 @@ export function useAuth() {
     return await userAPI.checkUsernameAvailability(username)
   }
   
+  // Cleanup function for auth subscription and session management
+  const cleanup = () => {
+    if (authSubscription) {
+      authSubscription.unsubscribe()
+      authSubscription = null
+    }
+    SessionManager.stopAutoRefresh()
+  }
+  
   // Initialize on first use
   if (!initialized.value) {
     initializeAuth()
   }
   
   return {
-    // State
-    user: computed(() => user.value),
-    session: computed(() => session.value),
-    userProfile: computed(() => userProfile.value),
-    loading: computed(() => loading.value),
+    // State - using readonly to prevent external mutations
+    user: readonly(user),
+    session: readonly(session),
+    userProfile: readonly(userProfile),
+    loading: readonly(loading),
     isAuthenticated,
     userEmail,
     userName,
@@ -309,6 +343,7 @@ export function useAuth() {
     
     // Utility
     initializeAuth,
+    cleanup,
   }
 }
 

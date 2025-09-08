@@ -1,6 +1,7 @@
 import type { Router } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
+// Optimized route guards with better performance
 export function setupRouteGuards(router: Router) {
   router.beforeEach(async (to, from, next) => {
     const { isAuthenticated, loading, initializeAuth } = useAuth()
@@ -8,11 +9,14 @@ export function setupRouteGuards(router: Router) {
     // Initialize auth if not already done
     await initializeAuth()
     
-    // Wait for auth to be initialized (max 3 seconds)
-    let waitTime = 0
-    while (loading.value && waitTime < 3000) {
-      await new Promise(resolve => setTimeout(resolve, 50))
-      waitTime += 50
+    // More efficient waiting mechanism with exponential backoff
+    const maxWaitTime = 2000 // Reduced from 3000ms
+    const startTime = Date.now()
+    let backoff = 10
+    
+    while (loading.value && (Date.now() - startTime) < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, backoff))
+      backoff = Math.min(backoff * 1.5, 100) // Exponential backoff with cap
     }
     
     // Check if route requires authentication
