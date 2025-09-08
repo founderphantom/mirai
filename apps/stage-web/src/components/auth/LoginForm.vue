@@ -257,21 +257,23 @@ const handleSubmit = async () => {
       } else {
         error.value = authError
       }
+      isLoading.value = false
       return
     }
     
-    // Success - Redirect to callback page for consistent loading experience
-    // The callback page will handle the final redirect
-    const callbackUrl = redirectTo.value !== '/' 
-      ? `/auth/callback?redirect=${encodeURIComponent(redirectTo.value)}`
-      : '/auth/callback'
+    // Success - show success message briefly
+    successMessage.value = 'Sign in successful! Redirecting...'
+    toast.success('Welcome back!')
     
-    router.push(callbackUrl)
+    // Wait a moment for the auth state to update
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Navigate to the redirect URL or home
+    await router.push(redirectTo.value)
     
   } catch (err) {
     console.error('Login error:', err)
     error.value = 'An unexpected error occurred. Please try again.'
-  } finally {
     isLoading.value = false
   }
 }

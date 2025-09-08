@@ -72,7 +72,19 @@ onMounted(async () => {
       return
     }
     
-    // Check for session from OAuth callback or email login
+    // Handle OAuth callback with hash parameters
+    const hashParams = new URLSearchParams(window.location.hash.substring(1))
+    const accessToken = hashParams.get('access_token')
+    const refreshToken = hashParams.get('refresh_token')
+    
+    // If we have tokens in the hash, this is an OAuth callback
+    if (accessToken && refreshToken) {
+      // The Supabase client will automatically handle these tokens
+      // Just wait for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    // Check for session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     
     if (sessionError) {
@@ -83,40 +95,43 @@ onMounted(async () => {
       return
     }
     
-    // For email login, we'll have a session immediately
-    // For OAuth, we might need to check the hash params
     if (!session) {
-      // Try to exchange code for session (for OAuth flow)
-      const hashParams = new URLSearchParams(window.location.hash.substring(1))
-      const accessToken = hashParams.get('access_token')
+      // No session found - this might be a direct navigation to callback
+      error.value = 'No authentication session found. Please sign in again.'
+      statusMessage.value = 'Session Not Found'
+      subMessage.value = ''
       
-      if (!accessToken) {
-        error.value = 'No authentication session found. Please try again.'
-        statusMessage.value = 'Authentication Failed'
-        subMessage.value = ''
-        return
-      }
+      // Redirect to login after a delay
+      setTimeout(() => {
+        router.push('/auth/login')
+      }, 2000)
+      return
     }
     
     // Success - Show consistent message for both email and OAuth logins
     statusMessage.value = 'Authentication successful!'
-    subMessage.value = 'Redirecting...'
+    subMessage.value = 'Redirecting to your dashboard...'
     
     toast.success('Welcome to AIRI!')
     
     // Get redirect URL from query or default to home
     const redirectTo = route.query.redirect as string || '/'
     
-    // Slightly longer delay for better UX
+    // Short delay for better UX
     setTimeout(() => {
       router.push(redirectTo)
-    }, 1500)
+    }, 1000)
     
   } catch (err) {
     console.error('Callback error:', err)
     error.value = 'An unexpected error occurred during authentication.'
     statusMessage.value = 'Authentication Failed'
     subMessage.value = ''
+    
+    // Redirect to login after delay
+    setTimeout(() => {
+      router.push('/auth/login')
+    }, 3000)
   }
 })
 </script>

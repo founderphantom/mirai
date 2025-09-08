@@ -111,12 +111,17 @@ const settings = computed(() => [
 
 async function handleSignOut() {
   const { error } = await signOut()
+  showSignOutDialog.value = false
+  
   if (error) {
     toast.error(t('settings.auth.sign_out_error'))
   } else {
     toast.success(t('settings.auth.sign_out_success'))
+    // Navigate to login page after successful sign out
+    setTimeout(() => {
+      router.push('/auth/login')
+    }, 500)
   }
-  showSignOutDialog.value = false
 }
 </script>
 
