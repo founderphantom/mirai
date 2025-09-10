@@ -46,6 +46,16 @@ describe('Auth Middleware', () => {
     }
   });
 
+  afterAll(() => {
+    // Clear the cache after all tests in this suite
+    if (authModule.tokenValidationCache) {
+      authModule.tokenValidationCache.clear();
+    }
+    // Clear all timers
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   describe('authenticateUser', () => {
     it('should authenticate valid user with Bearer token', async () => {
       const testUser = testUsers.free;

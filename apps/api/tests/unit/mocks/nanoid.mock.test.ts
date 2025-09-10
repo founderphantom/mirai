@@ -8,6 +8,13 @@ describe('nanoid mock', () => {
     jest.clearAllMocks();
   });
 
+  afterAll(() => {
+    // Clean up any remaining mocks and timers
+    jest.clearAllMocks();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   it('should be able to import and use nanoid mock', () => {
     const { nanoid } = require('nanoid');
     

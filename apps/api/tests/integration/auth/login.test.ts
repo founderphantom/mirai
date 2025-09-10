@@ -110,6 +110,13 @@ describe('POST /api/auth/login', () => {
     });
   });
 
+  afterAll(() => {
+    // Clean up any remaining mocks and timers
+    jest.clearAllMocks();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   describe('Success Cases', () => {
     it('should successfully login with valid credentials', async () => {
       const testUser = testUsers.plus;

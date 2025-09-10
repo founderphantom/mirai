@@ -90,6 +90,16 @@ export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, 
 
 // Clean up after all tests
 afterAll(async () => {
-  // Close any open connections
-  await delay(100);
+  // Clear all timers before cleanup
+  jest.clearAllTimers();
+  jest.useRealTimers();
+  
+  // Clear all mocks
+  jest.clearAllMocks();
+  jest.restoreAllMocks();
+  
+  // Force garbage collection if available
+  if (global.gc) {
+    global.gc();
+  }
 });

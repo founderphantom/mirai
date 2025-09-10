@@ -5,19 +5,21 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "npm run test:fast && next build",
+    "build:no-tests": "next build",
     "start": "next start -p 3001",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
-    "test": "jest --no-coverage",
+    "test": "jest --no-coverage --forceExit",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:unit": "jest --testPathPattern=tests/unit --no-coverage",
-    "test:integration": "jest --testPathPattern=tests/integration --no-coverage",
-    "test:performance": "jest --testPathPattern=tests/performance --runInBand",
-    "test:ci": "jest --ci --coverage --maxWorkers=2",
+    "test:coverage": "jest --coverage --forceExit",
+    "test:unit": "jest --testPathPattern=tests/unit --no-coverage --forceExit",
+    "test:integration": "jest --testPathPattern=tests/integration --no-coverage --forceExit",
+    "test:performance": "jest --testPathPattern=tests/performance --runInBand --forceExit",
+    "test:ci": "jest --ci --coverage --maxWorkers=2 --forceExit",
     "test:debug": "node --inspect-brk ./node_modules/.bin/jest --runInBand",
     "test:clear-cache": "jest --clearCache",
-    "test:fast": "jest --no-coverage --maxWorkers=50% --silent"
+    "test:fast": "jest --no-coverage --maxWorkers=2 --forceExit --bail --testTimeout=5000",
+    "test:fast:jest": "jest --no-coverage --maxWorkers=50% --silent --forceExit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",

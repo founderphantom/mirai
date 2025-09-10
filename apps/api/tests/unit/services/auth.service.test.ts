@@ -22,6 +22,13 @@ describe('AuthService', () => {
     jest.clearAllMocks();
   });
 
+  afterAll(() => {
+    // Clean up any remaining mocks and timers
+    jest.clearAllMocks();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   describe('signUp', () => {
     it('should successfully create a new user', async () => {
       const testUser = createTestUser();
