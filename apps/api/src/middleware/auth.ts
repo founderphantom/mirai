@@ -14,19 +14,109 @@ export interface AuthenticatedRequest extends NextApiRequest {
   };
 }
 
-// Token validation cache to reduce database calls for recently validated tokens
-const tokenValidationCache = new Map<string, { user: any; expiry: number }>();
-const CACHE_TTL_MS = 60000; // 1 minute cache TTL
+// LRU cache for token validation to reduce database calls
+interface CacheEntry {
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    subscription: {
+      tier: string;
+      status: string;
+    };
+  };
+  expiry: number;
+  lastAccess: number;
+}
 
-// Clean up expired cache entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of tokenValidationCache.entries()) {
-    if (value.expiry < now) {
-      tokenValidationCache.delete(key);
+class LRUTokenCache {
+  private cache = new Map<string, CacheEntry>();
+  private readonly maxSize = 1000; // Maximum cache entries
+  private readonly ttlMs = 60000; // 1 minute TTL
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // Only start cleanup interval in non-test environments
+    if (process.env.NODE_ENV !== 'test') {
+      this.startCleanup();
     }
   }
-}, 300000); // Clean every 5 minutes
+
+  private startCleanup(): void {
+    this.cleanupInterval = setInterval(() => {
+      this.evictExpired();
+    }, 300000); // Clean every 5 minutes
+  }
+
+  public stopCleanup(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+  }
+
+  private evictExpired(): void {
+    const now = Date.now();
+    for (const [key, value] of this.cache.entries()) {
+      if (value.expiry < now) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  private evictLRU(): void {
+    if (this.cache.size <= this.maxSize) return;
+    
+    // Find and remove least recently used entries
+    const entries = Array.from(this.cache.entries());
+    entries.sort((a, b) => a[1].lastAccess - b[1].lastAccess);
+    
+    const toRemove = entries.slice(0, Math.floor(this.maxSize * 0.1)); // Remove 10% of cache
+    for (const [key] of toRemove) {
+      this.cache.delete(key);
+    }
+  }
+
+  public get(key: string): CacheEntry | undefined {
+    const entry = this.cache.get(key);
+    if (entry) {
+      if (entry.expiry > Date.now()) {
+        entry.lastAccess = Date.now();
+        return entry;
+      }
+      this.cache.delete(key);
+    }
+    return undefined;
+  }
+
+  public set(key: string, user: CacheEntry['user']): void {
+    if (this.cache.size >= this.maxSize) {
+      this.evictLRU();
+    }
+    
+    this.cache.set(key, {
+      user,
+      expiry: Date.now() + this.ttlMs,
+      lastAccess: Date.now()
+    });
+  }
+
+  public clear(): void {
+    this.cache.clear();
+  }
+
+  public size(): number {
+    return this.cache.size;
+  }
+}
+
+const tokenValidationCache = new LRUTokenCache();
+
+// Export for cleanup in tests
+export const cleanupAuthMiddleware = (): void => {
+  tokenValidationCache.stopCleanup();
+  tokenValidationCache.clear();
+};
 
 export async function authenticateUser(
   req: AuthenticatedRequest,
@@ -64,7 +154,7 @@ export async function authenticateUser(
     
     // Check cache first
     const cached = tokenValidationCache.get(tokenHash);
-    if (cached && cached.expiry > Date.now()) {
+    if (cached) {
       // Use cached validation result
       req.user = cached.user;
       userId = cached.user.id;
@@ -134,9 +224,9 @@ export async function authenticateUser(
     
     userId = user.id;
 
-    // Get user profile from database
-    const { data: profile, error: profileError } = await (supabaseAdmin
-      .from('user_profiles') as any)
+    // Get user profile from database with proper error handling
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
       .select('*')
       .eq('id', user.id)
       .single();
@@ -149,8 +239,8 @@ export async function authenticateUser(
     }
 
     // Check if user is banned (using moderation service)
-    const { data: violations } = await (supabaseAdmin
-      .from('user_violations') as any)
+    const { data: violations } = await supabaseAdmin
+      .from('user_violations')
       .select('*')
       .eq('user_id', user.id)
       .eq('status', 'active')
@@ -177,21 +267,22 @@ export async function authenticateUser(
     req.user = userInfo;
     
     // Cache the validation result
-    tokenValidationCache.set(tokenHash, {
-      user: userInfo,
-      expiry: Date.now() + CACHE_TTL_MS
-    });
+    tokenValidationCache.set(tokenHash, userInfo);
 
-    // Update last seen (non-blocking)
-    (supabaseAdmin
-      .from('user_profiles') as any)
+    // Update last seen (non-blocking with proper error handling)
+    supabaseAdmin
+      .from('user_profiles')
       .update({ last_seen_at: new Date().toISOString() })
       .eq('id', user.id)
-      .then(() => {})
-      .catch((err: any) => {
+      .then((result) => {
+        if (result.error && process.env.NODE_ENV !== 'test') {
+          console.error('Failed to update last_seen_at:', result.error);
+        }
+      })
+      .catch((err: Error) => {
         // Only log in production to avoid test noise
         if (process.env.NODE_ENV !== 'test') {
-          console.error('Failed to update last_seen_at:', err);
+          console.error('Failed to update last_seen_at:', err.message);
         }
       });
 
@@ -220,29 +311,35 @@ export async function authenticateUser(
       });
     }
     
-    // Log security events for audit trail (without sensitive data)
-    // Using analytics_events table for security monitoring
+    // Log security events to dedicated audit trail table
     if (securityEventType && securityEventType !== 'auth_success') {
       try {
-        await (supabaseAdmin
-          .from('analytics_events') as any)
+        const auditResult = await supabaseAdmin
+          .from('security_audit_logs')
           .insert({
             user_id: userId,
             event_type: `auth_${securityEventType}`,
-            event_name: securityEventType,
-            event_category: 'security',
-            properties: {
-              ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
-              user_agent: req.headers['user-agent']
-            } as any,
-            page_path: req.url || '/api',
-            session_id: null,
+            event_category: 'authentication',
+            event_details: {
+              security_event: securityEventType,
+              timestamp: new Date().toISOString()
+            },
+            ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+            user_agent: req.headers['user-agent'] || null,
+            request_path: req.url || '/api',
+            request_method: req.method || 'POST',
+            response_status: securityEventType === 'auth_exception' ? 500 : 401,
+            duration_ms: duration,
             created_at: new Date().toISOString()
-          })
-          .then(() => {})
-          .catch(() => {}); // Non-blocking, ignore errors
-      } catch {
-        // Ignore logging errors
+          });
+        
+        if (auditResult.error && process.env.NODE_ENV !== 'test') {
+          console.error('Failed to log security event:', auditResult.error);
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+          console.error('Security event logging error:', error);
+        }
       }
     }
   }
@@ -339,8 +436,8 @@ export async function authenticateApiKey(
     }
 
     // Validate API key against database
-    const { data: apiKeyData, error } = await (supabaseAdmin
-      .from('api_keys') as any)
+    const { data: apiKeyData, error } = await supabaseAdmin
+      .from('api_keys')
       .select('*')
       .eq('key', apiKey)
       .eq('is_active', true)
@@ -362,8 +459,8 @@ export async function authenticateApiKey(
     }
 
     // Get associated user profile
-    const { data: profile, error: profileError } = await (supabaseAdmin
-      .from('user_profiles') as any)
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
       .select('*')
       .eq('id', apiKeyData.user_id)
       .single();
@@ -386,11 +483,15 @@ export async function authenticateApiKey(
       },
     };
 
-    // Update API key last used
-    await (supabaseAdmin
-      .from('api_keys') as any)
+    // Update API key last used with proper error handling
+    const updateResult = await supabaseAdmin
+      .from('api_keys')
       .update({ last_used_at: new Date().toISOString() })
       .eq('id', apiKeyData.id);
+    
+    if (updateResult.error && process.env.NODE_ENV !== 'test') {
+      console.error('Failed to update API key last_used_at:', updateResult.error);
+    }
 
     if (next) {
       next();
