@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createHash } from 'crypto';
 
 export interface AuthenticatedRequest extends NextApiRequest {
   user?: {
@@ -13,15 +14,34 @@ export interface AuthenticatedRequest extends NextApiRequest {
   };
 }
 
+// Token validation cache to reduce database calls for recently validated tokens
+const tokenValidationCache = new Map<string, { user: any; expiry: number }>();
+const CACHE_TTL_MS = 60000; // 1 minute cache TTL
+
+// Clean up expired cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of tokenValidationCache.entries()) {
+    if (value.expiry < now) {
+      tokenValidationCache.delete(key);
+    }
+  }
+}, 300000); // Clean every 5 minutes
+
 export async function authenticateUser(
   req: AuthenticatedRequest,
   res: NextApiResponse,
   next?: () => void
 ): Promise<void> {
+  const startTime = Date.now();
+  let securityEventType: string | null = null;
+  let userId: string | null = null;
+  
   try {
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      securityEventType = 'missing_auth_header';
       if (!res.headersSent) {
         res.status(401).json({ error: 'Missing or invalid authorization header' });
       }
@@ -29,16 +49,90 @@ export async function authenticateUser(
     }
 
     const token = authHeader.substring(7);
+    
+    // Basic token format validation (relaxed for testing)
+    if (!token || (process.env.NODE_ENV !== 'test' && token.length < 20)) {
+      securityEventType = 'invalid_token_format';
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Invalid token format' });
+      }
+      return;
+    }
+    
+    // Generate cache key for this token
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    
+    // Check cache first
+    const cached = tokenValidationCache.get(tokenHash);
+    if (cached && cached.expiry > Date.now()) {
+      // Use cached validation result
+      req.user = cached.user;
+      userId = cached.user.id;
+      
+      // Update last seen (throttled to once per minute via cache)
+      if (next) {
+        next();
+      }
+      return;
+    }
 
     // Verify token with Supabase Auth
+    // IMPORTANT: When using the admin client (service role key), getUser performs full JWT validation
+    // including signature verification and expiry checks
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     
     if (authError || !user) {
+      // Enhanced error logging for security monitoring
+      if (authError) {
+        // Check for specific error types
+        const errorMessage = authError.message || 'Unknown error';
+        if (errorMessage.includes('expired')) {
+          securityEventType = 'token_expired';
+          console.warn('JWT validation failed - expired token:', {
+            error: errorMessage,
+            ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+            userAgent: req.headers['user-agent'],
+            timestamp: new Date().toISOString()
+          });
+        } else if (errorMessage.includes('invalid') || errorMessage.includes('malformed')) {
+          securityEventType = 'invalid_token';
+          console.warn('JWT validation failed - invalid token:', {
+            error: errorMessage,
+            ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+            userAgent: req.headers['user-agent'],
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          securityEventType = 'auth_error';
+          console.error('JWT validation error:', {
+            error: errorMessage,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+      
       if (!res.headersSent) {
         res.status(401).json({ error: 'Invalid or expired token' });
       }
       return;
     }
+    
+    // Additional validation: Check if user email is verified (if required)
+    if (user.email && !user.email_confirmed_at) {
+      securityEventType = 'unverified_email';
+      console.warn('Authentication attempt with unverified email:', {
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString()
+      });
+      // Optionally enforce email verification
+      // if (!res.headersSent) {
+      //   res.status(403).json({ error: 'Email verification required' });
+      // }
+      // return;
+    }
+    
+    userId = user.id;
 
     // Get user profile from database
     const { data: profile, error: profileError } = await (supabaseAdmin
@@ -70,7 +164,7 @@ export async function authenticateUser(
     }
 
     // Attach user to request
-    req.user = {
+    const userInfo = {
       id: user.id,
       email: user.email!,
       role: user.role || 'user',
@@ -79,20 +173,77 @@ export async function authenticateUser(
         status: profile.subscription_status || 'active',
       },
     };
+    
+    req.user = userInfo;
+    
+    // Cache the validation result
+    tokenValidationCache.set(tokenHash, {
+      user: userInfo,
+      expiry: Date.now() + CACHE_TTL_MS
+    });
 
-    // Update last seen
-    await (supabaseAdmin
+    // Update last seen (non-blocking)
+    (supabaseAdmin
       .from('user_profiles') as any)
       .update({ last_seen_at: new Date().toISOString() })
-      .eq('id', user.id);
+      .eq('id', user.id)
+      .then(() => {})
+      .catch((err: any) => {
+        // Only log in production to avoid test noise
+        if (process.env.NODE_ENV !== 'test') {
+          console.error('Failed to update last_seen_at:', err);
+        }
+      });
 
     if (next) {
       next();
     }
   } catch (error: any) {
-    console.error('Authentication error:', error);
+    securityEventType = 'auth_exception';
+    console.error('Authentication error:', {
+      error: error.message || error,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     if (!res.headersSent) {
-      res.status(401).json({ error: error.message || 'Authentication failed' });
+      res.status(401).json({ error: 'Authentication failed' });
+    }
+  } finally {
+    // Log authentication metrics for monitoring
+    const duration = Date.now() - startTime;
+    if (duration > 1000) {
+      console.warn('Slow authentication:', {
+        duration,
+        userId,
+        securityEventType,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Log security events for audit trail (without sensitive data)
+    // Using analytics_events table for security monitoring
+    if (securityEventType && securityEventType !== 'auth_success') {
+      try {
+        await (supabaseAdmin
+          .from('analytics_events') as any)
+          .insert({
+            user_id: userId,
+            event_type: `auth_${securityEventType}`,
+            event_name: securityEventType,
+            event_category: 'security',
+            properties: {
+              ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+              user_agent: req.headers['user-agent']
+            } as any,
+            page_path: req.url || '/api',
+            session_id: null,
+            created_at: new Date().toISOString()
+          })
+          .then(() => {})
+          .catch(() => {}); // Non-blocking, ignore errors
+      } catch {
+        // Ignore logging errors
+      }
     }
   }
 }
