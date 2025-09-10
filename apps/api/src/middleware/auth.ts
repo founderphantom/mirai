@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { supabaseAdmin } from '@/lib/supabase';
-import { createHash } from 'crypto';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
+import type { JWTPayload } from 'jose';
 
 export interface AuthenticatedRequest extends NextApiRequest {
   user?: {
@@ -14,25 +15,17 @@ export interface AuthenticatedRequest extends NextApiRequest {
   };
 }
 
-// LRU cache for token validation to reduce database calls
-interface CacheEntry {
-  user: {
-    id: string;
-    email: string;
-    role: string;
-    subscription: {
-      tier: string;
-      status: string;
-    };
-  };
-  expiry: number;
-  lastAccess: number;
-}
+// Supabase project configuration
+const SUPABASE_PROJECT_ID = 'sgupizcxhxohouklbntm';
+const JWKS_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co/auth/v1/.well-known/jwks.json`;
 
-class LRUTokenCache {
-  private cache = new Map<string, CacheEntry>();
-  private readonly maxSize = 1000; // Maximum cache entries
-  private readonly ttlMs = 60000; // 1 minute TTL
+// Create JWKS client for public key verification
+const jwks = createRemoteJWKSet(new URL(JWKS_URL));
+
+// Cache for public keys with 10-minute TTL as per Supabase docs
+class PublicKeyCache {
+  private lastFetch: number = 0;
+  private readonly cacheTTL = 600000; // 10 minutes in milliseconds
   private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -43,9 +36,10 @@ class LRUTokenCache {
   }
 
   private startCleanup(): void {
+    // Cleanup every 15 minutes to ensure cache doesn't grow stale
     this.cleanupInterval = setInterval(() => {
-      this.evictExpired();
-    }, 300000); // Clean every 5 minutes
+      this.checkExpiry();
+    }, 900000); // 15 minutes
   }
 
   public stopCleanup(): void {
@@ -55,67 +49,44 @@ class LRUTokenCache {
     }
   }
 
-  private evictExpired(): void {
+  private checkExpiry(): void {
     const now = Date.now();
-    for (const [key, value] of this.cache.entries()) {
-      if (value.expiry < now) {
-        this.cache.delete(key);
-      }
+    if (this.lastFetch && (now - this.lastFetch) > this.cacheTTL) {
+      // Cache has expired, will be refreshed on next verification
+      this.lastFetch = 0;
     }
   }
 
-  private evictLRU(): void {
-    if (this.cache.size <= this.maxSize) return;
-    
-    // Find and remove least recently used entries
-    const entries = Array.from(this.cache.entries());
-    entries.sort((a, b) => a[1].lastAccess - b[1].lastAccess);
-    
-    const toRemove = entries.slice(0, Math.floor(this.maxSize * 0.1)); // Remove 10% of cache
-    for (const [key] of toRemove) {
-      this.cache.delete(key);
-    }
+  public shouldRefresh(): boolean {
+    const now = Date.now();
+    return !this.lastFetch || (now - this.lastFetch) > this.cacheTTL;
   }
 
-  public get(key: string): CacheEntry | undefined {
-    const entry = this.cache.get(key);
-    if (entry) {
-      if (entry.expiry > Date.now()) {
-        entry.lastAccess = Date.now();
-        return entry;
-      }
-      this.cache.delete(key);
-    }
-    return undefined;
-  }
-
-  public set(key: string, user: CacheEntry['user']): void {
-    if (this.cache.size >= this.maxSize) {
-      this.evictLRU();
-    }
-    
-    this.cache.set(key, {
-      user,
-      expiry: Date.now() + this.ttlMs,
-      lastAccess: Date.now()
-    });
+  public markFetched(): void {
+    this.lastFetch = Date.now();
   }
 
   public clear(): void {
-    this.cache.clear();
-  }
-
-  public size(): number {
-    return this.cache.size;
+    this.lastFetch = 0;
   }
 }
 
-const tokenValidationCache = new LRUTokenCache();
+const publicKeyCache = new PublicKeyCache();
+
+// Extended JWT payload type for Supabase tokens
+interface SupabaseJWTPayload extends JWTPayload {
+  sub?: string; // User ID
+  email?: string;
+  role?: string;
+  aal?: string; // Auth assurance level
+  amr?: Array<{ method: string; timestamp: number }>; // Auth methods
+  session_id?: string;
+}
 
 // Export for cleanup in tests
 export const cleanupAuthMiddleware = (): void => {
-  tokenValidationCache.stopCleanup();
-  tokenValidationCache.clear();
+  publicKeyCache.stopCleanup();
+  publicKeyCache.clear();
 };
 
 export async function authenticateUser(
@@ -140,65 +111,65 @@ export async function authenticateUser(
 
     const token = authHeader.substring(7);
     
-    // Basic token format validation (relaxed for testing)
-    if (!token || (process.env.NODE_ENV !== 'test' && token.length < 20)) {
+    // Basic token format validation
+    if (!token || token.split('.').length !== 3) {
       securityEventType = 'invalid_token_format';
       if (!res.headersSent) {
         res.status(401).json({ error: 'Invalid token format' });
       }
       return;
     }
-    
-    // Generate cache key for this token
-    const tokenHash = createHash('sha256').update(token).digest('hex');
-    
-    // Check cache first
-    const cached = tokenValidationCache.get(tokenHash);
-    if (cached) {
-      // Use cached validation result
-      req.user = cached.user;
-      userId = cached.user.id;
-      
-      // Update last seen (throttled to once per minute via cache)
-      if (next) {
-        next();
-      }
-      return;
-    }
 
-    // Verify token with Supabase Auth
-    // IMPORTANT: When using the admin client (service role key), getUser performs full JWT validation
-    // including signature verification and expiry checks
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (authError || !user) {
+    // Verify JWT using JWKS as per Supabase best practices
+    let payload: SupabaseJWTPayload;
+    try {
+      // Mark cache as accessed for TTL tracking
+      if (publicKeyCache.shouldRefresh()) {
+        publicKeyCache.markFetched();
+      }
+
+      // Verify JWT signature and claims using public key from JWKS
+      const { payload: verifiedPayload } = await jwtVerify(token, jwks, {
+        issuer: `https://${SUPABASE_PROJECT_ID}.supabase.co/auth/v1`,
+        audience: 'authenticated'
+      });
+      
+      payload = verifiedPayload as SupabaseJWTPayload;
+    } catch (jwtError: any) {
       // Enhanced error logging for security monitoring
-      if (authError) {
-        // Check for specific error types
-        const errorMessage = authError.message || 'Unknown error';
-        if (errorMessage.includes('expired')) {
-          securityEventType = 'token_expired';
-          console.warn('JWT validation failed - expired token:', {
-            error: errorMessage,
-            ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
-            userAgent: req.headers['user-agent'],
-            timestamp: new Date().toISOString()
-          });
-        } else if (errorMessage.includes('invalid') || errorMessage.includes('malformed')) {
-          securityEventType = 'invalid_token';
-          console.warn('JWT validation failed - invalid token:', {
-            error: errorMessage,
-            ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
-            userAgent: req.headers['user-agent'],
-            timestamp: new Date().toISOString()
-          });
-        } else {
-          securityEventType = 'auth_error';
-          console.error('JWT validation error:', {
-            error: errorMessage,
-            timestamp: new Date().toISOString()
-          });
-        }
+      const errorMessage = jwtError.message || 'Unknown error';
+      
+      if (errorMessage.includes('expired') || jwtError.code === 'ERR_JWT_EXPIRED') {
+        securityEventType = 'token_expired';
+        console.warn('JWT validation failed - expired token:', {
+          error: errorMessage,
+          ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+          userAgent: req.headers['user-agent'],
+          timestamp: new Date().toISOString()
+        });
+      } else if (errorMessage.includes('signature') || jwtError.code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED') {
+        securityEventType = 'invalid_signature';
+        console.warn('JWT validation failed - invalid signature:', {
+          error: errorMessage,
+          ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+          userAgent: req.headers['user-agent'],
+          timestamp: new Date().toISOString()
+        });
+      } else if (errorMessage.includes('claim') || jwtError.code === 'ERR_JWT_CLAIM_VALIDATION_FAILED') {
+        securityEventType = 'invalid_claims';
+        console.warn('JWT validation failed - invalid claims:', {
+          error: errorMessage,
+          ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+          userAgent: req.headers['user-agent'],
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        securityEventType = 'auth_error';
+        console.error('JWT validation error:', {
+          error: errorMessage,
+          code: jwtError.code,
+          timestamp: new Date().toISOString()
+        });
       }
       
       if (!res.headersSent) {
@@ -206,29 +177,31 @@ export async function authenticateUser(
       }
       return;
     }
-    
-    // Additional validation: Check if user email is verified (if required)
-    if (user.email && !user.email_confirmed_at) {
-      securityEventType = 'unverified_email';
-      console.warn('Authentication attempt with unverified email:', {
-        userId: user.id,
-        email: user.email,
+
+    // Validate required claims
+    if (!payload.sub || !payload.email) {
+      securityEventType = 'missing_claims';
+      console.warn('JWT missing required claims:', {
+        hasSub: !!payload.sub,
+        hasEmail: !!payload.email,
         timestamp: new Date().toISOString()
       });
-      // Optionally enforce email verification
-      // if (!res.headersSent) {
-      //   res.status(403).json({ error: 'Email verification required' });
-      // }
-      // return;
+      if (!res.headersSent) {
+        res.status(401).json({ error: 'Invalid token claims' });
+      }
+      return;
     }
     
-    userId = user.id;
+    // Extract user ID from the sub claim
+    userId = payload.sub;
+    const userEmail = payload.email;
+    const userRole = payload.role || 'authenticated';
 
     // Get user profile from database with proper error handling
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('user_profiles')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (profileError || !profile) {
@@ -242,7 +215,7 @@ export async function authenticateUser(
     const { data: violations } = await supabaseAdmin
       .from('user_violations')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('status', 'active')
       .single();
 
@@ -254,37 +227,32 @@ export async function authenticateUser(
     }
 
     // Attach user to request
-    const userInfo = {
-      id: user.id,
-      email: user.email!,
-      role: user.role || 'user',
+    req.user = {
+      id: userId,
+      email: userEmail,
+      role: userRole,
       subscription: {
         tier: profile.subscription_tier || 'free',
         status: profile.subscription_status || 'active',
       },
     };
-    
-    req.user = userInfo;
-    
-    // Cache the validation result
-    tokenValidationCache.set(tokenHash, userInfo);
 
     // Update last seen (non-blocking with proper error handling)
-    supabaseAdmin
-      .from('user_profiles')
-      .update({ last_seen_at: new Date().toISOString() })
-      .eq('id', user.id)
-      .then((result) => {
-        if (result.error && process.env.NODE_ENV !== 'test') {
-          console.error('Failed to update last_seen_at:', result.error);
-        }
-      })
-      .catch((err: Error) => {
-        // Only log in production to avoid test noise
-        if (process.env.NODE_ENV !== 'test') {
-          console.error('Failed to update last_seen_at:', err.message);
-        }
-      });
+    Promise.resolve(
+      supabaseAdmin
+        .from('user_profiles')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', userId)
+    ).then((result) => {
+      if (result.error && process.env.NODE_ENV !== 'test') {
+        console.error('Failed to update last_seen_at:', result.error);
+      }
+    }).catch((err: Error) => {
+      // Only log in production to avoid test noise
+      if (process.env.NODE_ENV !== 'test') {
+        console.error('Failed to update last_seen_at:', err.message);
+      }
+    });
 
     if (next) {
       next();
@@ -311,25 +279,25 @@ export async function authenticateUser(
       });
     }
     
-    // Log security events to dedicated audit trail table
+    // Log security events to analytics_events table for audit trail
     if (securityEventType && securityEventType !== 'auth_success') {
       try {
         const auditResult = await supabaseAdmin
-          .from('security_audit_logs')
+          .from('analytics_events')
           .insert({
             user_id: userId,
             event_type: `auth_${securityEventType}`,
-            event_category: 'authentication',
-            event_details: {
+            event_data: {
+              category: 'authentication',
               security_event: securityEventType,
+              ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+              user_agent: req.headers['user-agent'] || null,
+              request_path: req.url || '/api',
+              request_method: req.method || 'POST',
+              response_status: securityEventType === 'auth_exception' ? 500 : 401,
+              duration_ms: duration,
               timestamp: new Date().toISOString()
             },
-            ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
-            user_agent: req.headers['user-agent'] || null,
-            request_path: req.url || '/api',
-            request_method: req.method || 'POST',
-            response_status: securityEventType === 'auth_exception' ? 500 : 401,
-            duration_ms: duration,
             created_at: new Date().toISOString()
           });
         

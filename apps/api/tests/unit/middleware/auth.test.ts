@@ -21,11 +21,20 @@ import {
 // Mock the supabase module
 jest.mock('@/lib/supabase');
 
+// Mock the jose module for JWT verification
+jest.mock('jose', () => ({
+  jwtVerify: jest.fn(),
+  createRemoteJWKSet: jest.fn(() => 'mock-jwks')
+}));
+
 // Set test timeout to 10 seconds instead of default 30
 jest.setTimeout(10000);
 
 // Need to import the actual module to clear the cache
 const authModule = require('@/middleware/auth');
+
+// Import jose for mocking
+const { jwtVerify } = require('jose');
 
 describe('Auth Middleware', () => {
   let req: AuthenticatedRequest;
@@ -40,16 +49,16 @@ describe('Auth Middleware', () => {
     nextCalled = false;
     jest.clearAllMocks();
     
-    // Clear the token validation cache between tests
-    if (authModule.tokenValidationCache) {
-      authModule.tokenValidationCache.clear();
+    // Clear the public key cache between tests
+    if (authModule.publicKeyCache) {
+      authModule.publicKeyCache.clear();
     }
   });
 
   afterAll(() => {
-    // Clear the cache after all tests in this suite
-    if (authModule.tokenValidationCache) {
-      authModule.tokenValidationCache.clear();
+    // Clear the cache and stop cleanup after all tests in this suite
+    if (authModule.cleanupAuthMiddleware) {
+      authModule.cleanupAuthMiddleware();
     }
     // Clear all timers
     jest.clearAllTimers();
@@ -59,17 +68,23 @@ describe('Auth Middleware', () => {
   describe('authenticateUser', () => {
     it('should authenticate valid user with Bearer token', async () => {
       const testUser = testUsers.free;
-      const token = 'valid-jwt-token';
+      // Use a properly formatted JWT token (header.payload.signature)
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // Remove role from mockAuthUser to test the default 'user' fallback
-      const { role, ...authUserWithoutRole } = mockAuthUser;
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { ...authUserWithoutRole, id: testUser.id, email: testUser.email }
+      // Mock successful JWT verification
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated',
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       // Mock the database queries
@@ -101,6 +116,12 @@ describe('Auth Middleware', () => {
                 error: null,
               }),
             })),
+          };
+        }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
           };
         }
         return {
@@ -190,6 +211,12 @@ describe('Auth Middleware', () => {
               data: { ...mockUserProfile, ...testUser },
               error: null,
             }),
+          };
+        }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
           };
         }
         return {
@@ -303,18 +330,24 @@ describe('Auth Middleware', () => {
   describe('requireAuth', () => {
     it('should allow authenticated users to access protected endpoints', async () => {
       const testUser = testUsers.free;
-      const token = 'valid-jwt-token';
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // Remove role from mockAuthUser to test the default 'user' fallback
-      const { role, ...authUserWithoutRole } = mockAuthUser;
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { ...authUserWithoutRole, id: testUser.id, email: testUser.email }
+      // Mock successful JWT verification
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated',
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -341,6 +374,12 @@ describe('Auth Middleware', () => {
                 error: null,
               }),
             })),
+          };
+        }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
           };
         }
         return {
@@ -371,18 +410,24 @@ describe('Auth Middleware', () => {
   describe('requireSubscription', () => {
     it('should allow users with required subscription plans', async () => {
       const testUser = testUsers.pro;
-      const token = 'pro-user-jwt-token'; // Use unique token to avoid cache collision
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm8tdXNlciIsIm5hbWUiOiJQcm8gVXNlciIsImlhdCI6MTUxNjIzOTAyMn0.4Adcj3UFYzPUVaVF43FmMab6RlaQD8A9V8wFzzht-KQ';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // Remove role from mockAuthUser to test the default 'user' fallback
-      const { role, ...authUserWithoutRole } = mockAuthUser;
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { ...authUserWithoutRole, id: testUser.id, email: testUser.email }
+      // Mock successful JWT verification
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated',
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -416,6 +461,12 @@ describe('Auth Middleware', () => {
             })),
           };
         }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
+          };
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -431,18 +482,24 @@ describe('Auth Middleware', () => {
 
     it('should reject users without subscription', async () => {
       const testUser = testUsers.free;
-      const token = 'valid-jwt-token';
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // Remove role from mockAuthUser to test the default 'user' fallback
-      const { role, ...authUserWithoutRole } = mockAuthUser;
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { ...authUserWithoutRole, id: testUser.id, email: testUser.email }
+      // Mock successful JWT verification
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated',
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -476,6 +533,12 @@ describe('Auth Middleware', () => {
             })),
           };
         }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
+          };
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -492,18 +555,24 @@ describe('Auth Middleware', () => {
 
     it('should reject users with insufficient subscription plan', async () => {
       const testUser = testUsers.free;
-      const token = 'valid-jwt-token';
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // Remove role from mockAuthUser to test the default 'user' fallback
-      const { role, ...authUserWithoutRole } = mockAuthUser;
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { ...authUserWithoutRole, id: testUser.id, email: testUser.email }
+      // Mock successful JWT verification
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated',
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -537,6 +606,12 @@ describe('Auth Middleware', () => {
             })),
           };
         }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
+          };
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -560,22 +635,24 @@ describe('Auth Middleware', () => {
   describe('requireRole', () => {
     it('should allow users with required roles', async () => {
       const testUser = testUsers.admin;
-      const token = 'admin-user-jwt-token'; // Use unique token to avoid cache collision
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbi11c2VyIiwibmFtZSI6IkFkbWluIFVzZXIiLCJpYXQiOjE1MTYyMzkwMjJ9.UVTjMv7WPiL3X-uQC1e5sf6A-K9y7eOqE_CxtJQH9oI';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // For admin test, explicitly include the admin role
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { 
-            ...mockAuthUser, 
-            id: testUser.id, 
-            email: testUser.email,
-            role: 'admin' // Admin users have 'admin' role
-          }
+      // Mock successful JWT verification for admin user with admin role
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'admin', // Admin users have 'admin' role in JWT
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -602,6 +679,12 @@ describe('Auth Middleware', () => {
                 error: null,
               }),
             })),
+          };
+        }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
           };
         }
         return {
@@ -619,21 +702,24 @@ describe('Auth Middleware', () => {
 
     it('should reject users without required role', async () => {
       const testUser = testUsers.free;
-      const token = 'valid-jwt-token';
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { 
-            ...mockAuthUser, 
-            id: testUser.id, 
-            email: testUser.email
-            // Don't set role here - it will default to 'user' in the middleware
-          }
+      // Mock successful JWT verification for regular user (defaults to authenticated role)
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated', // Regular users have 'authenticated' role
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -662,6 +748,12 @@ describe('Auth Middleware', () => {
             })),
           };
         }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
+          };
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -677,7 +769,7 @@ describe('Auth Middleware', () => {
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         error: 'Insufficient permissions',
         required: ['admin', 'moderator'],
-        current: 'user', // The middleware defaults to 'user' when no role specified
+        current: 'authenticated', // The middleware defaults to 'authenticated' when no role specified
       }));
     });
   });
@@ -689,7 +781,8 @@ describe('Auth Middleware', () => {
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers['x-api-key'] = apiKey;
-      req.headers.authorization = 'Bearer some-jwt-token'; // Should be ignored
+      // Use a properly formatted JWT token (though it should be ignored)
+      req.headers.authorization = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
         if (table === 'api_keys') {
@@ -723,6 +816,12 @@ describe('Auth Middleware', () => {
             }),
           };
         }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
+          };
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -739,18 +838,24 @@ describe('Auth Middleware', () => {
 
     it('should fall back to JWT authentication when no API key', async () => {
       const testUser = testUsers.free;
-      const token = 'valid-jwt-token';
+      // Use a properly formatted JWT token
+      const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
       const handler = jest.fn().mockResolvedValue(undefined);
       
       req.headers.authorization = `Bearer ${token}`;
       
-      // Remove role from mockAuthUser to test the default 'user' fallback
-      const { role, ...authUserWithoutRole } = mockAuthUser;
-      (supabaseAdmin.auth.getUser as jest.Mock).mockResolvedValue({
-        data: { 
-          user: { ...authUserWithoutRole, id: testUser.id, email: testUser.email }
+      // Mock successful JWT verification
+      (jwtVerify as jest.Mock).mockResolvedValue({
+        payload: {
+          sub: testUser.id,
+          email: testUser.email,
+          role: 'authenticated',
+          iss: 'https://sgupizcxhxohouklbntm.supabase.co/auth/v1',
+          aud: 'authenticated',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
         },
-        error: null,
+        protectedHeader: { alg: 'RS256' }
       });
       
       (supabaseAdmin.from as jest.Mock).mockImplementation((table) => {
@@ -777,6 +882,12 @@ describe('Auth Middleware', () => {
                 error: null,
               }),
             })),
+          };
+        }
+        // Mock analytics_events table
+        if (table === 'analytics_events') {
+          return {
+            insert: jest.fn().mockResolvedValue({ data: null, error: null })
           };
         }
         return {
