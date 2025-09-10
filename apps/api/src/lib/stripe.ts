@@ -78,9 +78,9 @@ export class StripeService {
     try {
       // Check if customer already exists
       const { data: existingCustomer } = await (supabaseAdmin
-        .from('subscriptions') as any)
+        .from('user_profiles') as any)
         .select('stripe_customer_id')
-        .eq('user_id', userId)
+        .eq('id', userId)
         .single();
 
       if ((existingCustomer as any)?.stripe_customer_id) {
@@ -150,9 +150,9 @@ export class StripeService {
     try {
       // Get customer ID
       const { data: subscription } = await (supabaseAdmin
-        .from('subscriptions') as any)
+        .from('user_profiles') as any)
         .select('stripe_customer_id')
-        .eq('user_id', userId)
+        .eq('id', userId)
         .single();
 
       if (!subscription?.stripe_customer_id) {
@@ -176,10 +176,10 @@ export class StripeService {
     try {
       // Get subscription
       const { data: subscriptionData } = await (supabaseAdmin
-        .from('subscriptions') as any)
+        .from('user_profiles') as any)
         .select('stripe_subscription_id')
-        .eq('user_id', userId)
-        .eq('status', 'active')
+        .eq('id', userId)
+        .eq('subscription_status', 'active')
         .single();
 
       if (!subscriptionData?.stripe_subscription_id) {
@@ -201,14 +201,13 @@ export class StripeService {
 
       // Update database
       await (supabaseAdmin
-        .from('subscriptions') as any)
+        .from('user_profiles') as any)
         .update({
-          status: immediately ? 'canceled' : 'active',
-          cancel_at: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
-          canceled_at: immediately ? new Date().toISOString() : null,
+          subscription_status: immediately ? 'canceled' : 'active',
+          subscription_ends_at: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
           updated_at: new Date().toISOString(),
         })
-        .eq('user_id', userId);
+        .eq('id', userId);
 
       return { success: true, subscription };
     } catch (error: any) {
@@ -222,9 +221,9 @@ export class StripeService {
     try {
       // Get subscription
       const { data: subscriptionData } = await (supabaseAdmin
-        .from('subscriptions') as any)
+        .from('user_profiles') as any)
         .select('stripe_subscription_id')
-        .eq('user_id', userId)
+        .eq('id', userId)
         .single();
 
       if (!subscriptionData?.stripe_subscription_id) {
@@ -241,12 +240,12 @@ export class StripeService {
 
       // Update database
       await (supabaseAdmin
-        .from('subscriptions') as any)
+        .from('user_profiles') as any)
         .update({
-          cancel_at: null,
+          subscription_ends_at: null,
           updated_at: new Date().toISOString(),
         })
-        .eq('user_id', userId);
+        .eq('id', userId);
 
       return { success: true, subscription };
     } catch (error: any) {
@@ -303,20 +302,18 @@ export class StripeService {
     if (priceId === PRICE_IDS.pro) planId = 'pro';
     else if (priceId === PRICE_IDS.enterprise) planId = 'enterprise';
 
-    // Create or update subscription record
+    // Update user profile with subscription data
     await (supabaseAdmin
-      .from('subscriptions') as any)
-      .upsert({
-        user_id: userId,
+      .from('user_profiles') as any)
+      .update({
         stripe_customer_id: session.customer as string,
         stripe_subscription_id: subscription.id,
-        plan_id: planId,
-        status: subscription.status as any,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        created_at: new Date().toISOString(),
+        subscription_tier: planId,
+        subscription_status: subscription.status as any,
+        subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
         updated_at: new Date().toISOString(),
-      });
+      })
+      .eq('id', userId);
 
     // Create notification
     await (supabaseAdmin
@@ -343,13 +340,11 @@ export class StripeService {
     else if (priceId === PRICE_IDS.enterprise) planId = 'enterprise';
 
     await (supabaseAdmin
-      .from('subscriptions') as any)
+      .from('user_profiles') as any)
       .update({
-        plan_id: planId,
-        status: subscription.status as any,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        cancel_at: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
+        subscription_tier: planId,
+        subscription_status: subscription.status as any,
+        subscription_ends_at: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : new Date(subscription.current_period_end * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('stripe_subscription_id', subscription.id);
@@ -361,10 +356,10 @@ export class StripeService {
     if (!userId) return;
 
     await (supabaseAdmin
-      .from('subscriptions') as any)
+      .from('user_profiles') as any)
       .update({
-        status: 'canceled',
-        canceled_at: new Date().toISOString(),
+        subscription_status: 'canceled',
+        subscription_ends_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('stripe_subscription_id', subscription.id);
@@ -387,8 +382,8 @@ export class StripeService {
     
     // Get user from customer ID
     const { data: subscription } = await (supabaseAdmin
-      .from('subscriptions') as any)
-      .select('user_id')
+      .from('user_profiles') as any)
+      .select('id')
       .eq('stripe_customer_id', customerId)
       .single();
 
@@ -396,9 +391,9 @@ export class StripeService {
 
     // Log payment
     await (supabaseAdmin
-      .from('payments') as any)
+      .from('payment_history') as any)
       .insert({
-        user_id: subscription.user_id,
+        user_id: subscription.id,
         stripe_invoice_id: invoice.id,
         amount: invoice.amount_paid / 100, // Convert from cents
         currency: invoice.currency,
@@ -413,8 +408,8 @@ export class StripeService {
     
     // Get user from customer ID
     const { data: subscription } = await (supabaseAdmin
-      .from('subscriptions') as any)
-      .select('user_id')
+      .from('user_profiles') as any)
+      .select('id')
       .eq('stripe_customer_id', customerId)
       .single();
 
@@ -422,18 +417,18 @@ export class StripeService {
 
     // Update subscription status
     await (supabaseAdmin
-      .from('subscriptions') as any)
+      .from('user_profiles') as any)
       .update({
-        status: 'past_due',
+        subscription_status: 'past_due',
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', subscription.user_id);
+      .eq('id', subscription.id);
 
     // Create notification
     await (supabaseAdmin
       .from('notifications') as any)
       .insert({
-        user_id: subscription.user_id,
+        user_id: subscription.id,
         type: 'payment_failed',
         title: 'Payment Failed',
         message: 'Your payment failed. Please update your payment method.',

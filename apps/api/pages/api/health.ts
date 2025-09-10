@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Check database
   try {
-    const { error } = await supabase.from('users').select('id').limit(1);
+    const { error } = await supabase.from('user_profiles').select('id').limit(1);
     health.services.database = error ? 'unhealthy' : 'healthy';
   } catch {
     health.services.database = 'unhealthy';

@@ -217,7 +217,7 @@ export async function rotateApiKey(
   const newKey = await createApiKey(
     userId,
     `${existingKey.name} (rotated)`,
-    existingKey.scopes
+    existingKey.scopes || ['read', 'write']
   );
   
   return newKey;

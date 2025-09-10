@@ -168,7 +168,7 @@ export class VoiceService {
   async trackVoiceUsage(userId: string, type: 'tts' | 'stt', duration: number): Promise<void> {
     try {
       await (supabaseAdmin
-      .from('voice_usage') as any)
+      .from('voice_usage' as any) as any)
         .insert({
           user_id: userId,
           type,

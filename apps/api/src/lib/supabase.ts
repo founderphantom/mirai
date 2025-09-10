@@ -220,7 +220,7 @@ export const dbHelpers = {
     const maxTokens = Math.min(Math.max(options.maxTokens || 2048, 1), 32000);
 
     const { data, error } = await (supabaseAdmin
-      .from('conversations'))
+      .from('conversations') as any)
       .insert({
         user_id: userId,
         title: sanitizeString(title) || 'New Conversation',
@@ -233,7 +233,7 @@ export const dbHelpers = {
         system_prompt: sanitizeString(options.systemPrompt),
         temperature: temperature,
         max_tokens: maxTokens,
-        settings: options.settings || {},
+        settings: (options.settings || {}) as any,
         tags: [],
         is_archived: false,
         is_starred: false,
@@ -277,7 +277,7 @@ export const dbHelpers = {
       role,
       content,
       content_type: options.contentType || 'text',
-      attachments: options.attachments || [],
+      attachments: (options.attachments || []) as any,
       prompt_tokens: options.promptTokens || 0,
       completion_tokens: options.completionTokens || 0,
       total_tokens: options.totalTokens || 0,
@@ -286,12 +286,12 @@ export const dbHelpers = {
       response_time_ms: options.responseTimeMs || null,
       finish_reason: options.finishReason || null,
       flagged_for_moderation: false,
-      moderation_results: {},
-      function_call: options.functionCall || null,
-      tool_calls: options.toolCalls || null,
+      moderation_results: {} as any,
+      function_call: (options.functionCall || null) as any,
+      tool_calls: (options.toolCalls || null) as any,
       rating: null,
       feedback: null,
-      metadata: options.metadata || {},
+      metadata: (options.metadata || {}) as any,
       created_at: new Date().toISOString(),
       edited_at: null,
       deleted_at: null,
@@ -402,7 +402,7 @@ export const dbHelpers = {
         response_time_ms: options.responseTimeMs || null,
         error_message: options.errorMessage || null,
         error_code: options.errorMessage ? 'API_ERROR' : null,
-        metadata: options.metadata || {},
+        metadata: (options.metadata || {}) as any,
         created_at: new Date().toISOString(),
       });
 
@@ -445,8 +445,8 @@ export const dbHelpers = {
 
     if (existing) {
       // Update existing record
-      const providerUsage = existing.provider_usage || {};
-      const modelUsage = existing.model_usage || {};
+      const providerUsage = (existing.provider_usage || {}) as any;
+      const modelUsage = (existing.model_usage || {}) as any;
       
       if (updates.providerId) {
         providerUsage[updates.providerId] = (providerUsage[updates.providerId] || 0) + 1;
@@ -458,13 +458,13 @@ export const dbHelpers = {
       await (supabaseAdmin
         .from('usage_daily_aggregates'))
         .update({
-          message_count: existing.message_count + (updates.messageCount || 0),
-          total_prompt_tokens: existing.total_prompt_tokens + (updates.promptTokens || 0),
-          total_completion_tokens: existing.total_completion_tokens + (updates.completionTokens || 0),
-          total_tokens: existing.total_tokens + (updates.totalTokens || 0),
-          total_estimated_cost: existing.total_estimated_cost + (updates.estimatedCost || 0),
-          provider_usage: providerUsage,
-          model_usage: modelUsage,
+          message_count: (existing.message_count || 0) + (updates.messageCount || 0),
+          total_prompt_tokens: (existing.total_prompt_tokens || 0) + (updates.promptTokens || 0),
+          total_completion_tokens: (existing.total_completion_tokens || 0) + (updates.completionTokens || 0),
+          total_tokens: (existing.total_tokens || 0) + (updates.totalTokens || 0),
+          total_estimated_cost: (existing.total_estimated_cost || 0) + (updates.estimatedCost || 0),
+          provider_usage: providerUsage as any,
+          model_usage: modelUsage as any,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existing.id);
@@ -484,8 +484,8 @@ export const dbHelpers = {
           total_completion_tokens: updates.completionTokens || 0,
           total_tokens: updates.totalTokens || 0,
           total_estimated_cost: updates.estimatedCost || 0,
-          provider_usage: providerUsage,
-          model_usage: modelUsage,
+          provider_usage: providerUsage as any,
+          model_usage: modelUsage as any,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -588,7 +588,7 @@ export const dbHelpers = {
       p_conversation_id: conversationId,
       p_user_id: userId,
       p_limit: limit,
-      p_before_id: beforeId || null,
+      p_before_id: beforeId || undefined,
     });
 
     if (error) throw error;

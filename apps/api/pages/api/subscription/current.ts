@@ -10,15 +10,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   }
 
   try {
-    // Get user's subscription
-    const { data: subscription, error } = await (supabaseAdmin
-      .from('subscriptions') as any)
+    // Get user's subscription from user_profiles
+    const { data: userProfile, error } = await (supabaseAdmin
+      .from('user_profiles') as any)
       .select('*')
-      .eq('user_id', req.user!.id)
-      .eq('status', 'active')
+      .eq('id', req.user!.id)
       .single();
 
-    if (error || !subscription) {
+    if (error || !userProfile || !userProfile.subscription_tier || userProfile.subscription_tier === 'free') {
       // Return free tier if no subscription
       return res.status(200).json({
         success: true,
@@ -31,22 +30,30 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     }
 
     // Get tier features
-    const tierFeatures = SUBSCRIPTION_TIERS[(subscription as any).plan_id as keyof typeof SUBSCRIPTION_TIERS];
+    const tierFeatures = SUBSCRIPTION_TIERS[userProfile.subscription_tier as keyof typeof SUBSCRIPTION_TIERS];
 
-    // Get usage for current period
-    const currentPeriodStart = new Date((subscription as any).current_period_start);
+    // Get usage for current period (use beginning of current month)
+    const currentPeriodStart = new Date();
+    currentPeriodStart.setDate(1);
+    currentPeriodStart.setHours(0, 0, 0, 0);
     const { data: usage } = await (supabaseAdmin
-      .from('usage_metrics') as any)
-      .select('tokens_used')
+      .from('usage_logs') as any)
+      .select('total_tokens')
       .eq('user_id', req.user!.id)
-      .gte('timestamp', currentPeriodStart.toISOString());
+      .gte('created_at', currentPeriodStart.toISOString());
 
-    const totalTokens = usage?.reduce((sum: number, record: any) => sum + record.tokens_used, 0) || 0;
+    const totalTokens = usage?.reduce((sum: number, record: any) => sum + (record.total_tokens || 0), 0) || 0;
 
     res.status(200).json({
       success: true,
       data: {
-        ...(subscription as any),
+        id: userProfile.id,
+        plan: userProfile.subscription_tier,
+        status: userProfile.subscription_status || 'active',
+        stripe_customer_id: userProfile.stripe_customer_id,
+        stripe_subscription_id: userProfile.stripe_subscription_id,
+        trial_ends_at: userProfile.trial_ends_at,
+        subscription_ends_at: userProfile.subscription_ends_at,
         features: tierFeatures?.features,
         usage: {
           tokens: totalTokens,

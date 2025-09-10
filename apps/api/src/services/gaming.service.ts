@@ -22,7 +22,7 @@ export class GamingService {
       // For now, we'll simulate the session creation
       
       const session = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .insert({
           user_id: userId,
           game: 'minecraft',
@@ -62,7 +62,7 @@ export class GamingService {
       // For now, we'll simulate the session creation
       
       const session = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .insert({
           user_id: userId,
           game: 'roblox',
@@ -96,7 +96,7 @@ export class GamingService {
       // For now, we'll simulate the session creation
       
       const session = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .insert({
           user_id: userId,
           game: 'fortnite',
@@ -125,7 +125,7 @@ export class GamingService {
   async getSession(sessionId: string, userId: string): Promise<GamingSession | null> {
     try {
       const { data, error } = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .select('*')
         .eq('id', sessionId)
         .eq('user_id', userId)
@@ -143,7 +143,7 @@ export class GamingService {
   async getActiveSessions(userId: string): Promise<GamingSession[]> {
     try {
       const { data, error } = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'active')
@@ -161,7 +161,7 @@ export class GamingService {
   async endSession(sessionId: string, userId: string): Promise<boolean> {
     try {
       const { error } = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .update({
           status: 'ended',
           ended_at: new Date().toISOString(),
@@ -188,7 +188,7 @@ export class GamingService {
     try {
       // Get session
       const { data: session, error } = await (supabaseAdmin
-      .from('gaming_sessions') as any)
+      .from('gaming_sessions' as any) as any)
         .select('*')
         .eq('session_id', sessionId)
         .eq('status', 'active')
@@ -209,10 +209,11 @@ export class GamingService {
         status: 'success',
       };
 
-      // Log command
-      await (supabaseAdmin
-      .from('game_commands') as any)
-        .insert(commandLog);
+      // Log command - table not implemented yet
+      // TODO: Create game_commands table or use alternative logging
+      // await (supabaseAdmin
+      // .from('game_commands' as any) as any)
+      //   .insert(commandLog);
 
       return {
         success: true,
@@ -229,7 +230,7 @@ export class GamingService {
   async getGameStats(userId: string, game?: string): Promise<any> {
     try {
       const query = supabaseAdmin
-        .from('gaming_sessions')
+        .from('gaming_sessions' as any)
         .select('*')
         .eq('user_id', userId);
 
@@ -284,7 +285,7 @@ export class GamingService {
 
       // Log AI action
       await (supabaseAdmin
-      .from('ai_game_actions') as any)
+      .from('ai_game_actions' as any) as any)
         .insert({
           session_id: sessionId,
           action,
