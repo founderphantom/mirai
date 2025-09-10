@@ -33,7 +33,8 @@
       "Bash(npm install)",
       "Bash(pnpm update:*)",
       "Bash(npm run typecheck:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

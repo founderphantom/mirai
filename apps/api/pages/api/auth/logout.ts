@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { requireAuth, AuthenticatedRequest } from '@/middleware/auth';
 import { authService } from '@/services/auth.service';
 import { asyncHandler } from '@/middleware/error';
+import { getCookieSettings } from '@/lib/config';
 
 async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -14,10 +15,14 @@ async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
     const token = authHeader?.substring(7) || '';
     await authService.signOut(token);
     
-    // Clear cookies
+    // Get secure cookie settings
+    const cookieSettings = getCookieSettings();
+    const secureFlag = cookieSettings.secure ? '; Secure' : '';
+    
+    // Clear cookies with proper security flags
     res.setHeader('Set-Cookie', [
-      `access_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict`,
-      `refresh_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict`,
+      `access_token=; HttpOnly; Path=${cookieSettings.path}; Max-Age=0; SameSite=${cookieSettings.sameSite}${secureFlag}`,
+      `refresh_token=; HttpOnly; Path=${cookieSettings.path}; Max-Age=0; SameSite=${cookieSettings.sameSite}${secureFlag}`,
     ]);
 
     res.status(200).json({

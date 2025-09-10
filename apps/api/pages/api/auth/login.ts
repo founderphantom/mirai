@@ -3,6 +3,7 @@ import { authService } from '@/services/auth.service';
 import { validate, schemas } from '@/middleware/validation';
 import { asyncHandler } from '@/middleware/error';
 import { authRateLimit } from '@/middleware/rateLimit';
+import { getCookieSettings, isProduction } from '@/lib/config';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -20,10 +21,14 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const result = await authService.signIn(email, password);
     
-    // Set cookies for tokens
+    // Get secure cookie settings
+    const cookieSettings = getCookieSettings();
+    const secureFlag = cookieSettings.secure ? '; Secure' : '';
+    
+    // Set cookies for tokens with proper security flags
     res.setHeader('Set-Cookie', [
-      `access_token=${result.session.access_token}; HttpOnly; Path=/; Max-Age=${result.session.expires_in}; SameSite=Strict`,
-      `refresh_token=${result.session.refresh_token}; HttpOnly; Path=/; Max-Age=604800; SameSite=Strict`,
+      `access_token=${result.session.access_token}; HttpOnly; Path=${cookieSettings.path}; Max-Age=${result.session.expires_in}; SameSite=${cookieSettings.sameSite}${secureFlag}`,
+      `refresh_token=${result.session.refresh_token}; HttpOnly; Path=${cookieSettings.path}; Max-Age=604800; SameSite=${cookieSettings.sameSite}${secureFlag}`,
     ]);
 
     res.status(200).json({

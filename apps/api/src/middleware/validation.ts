@@ -2,17 +2,32 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { z, ZodError, ZodSchema } from 'zod';
 import { ValidationError } from './error';
 
+// Enhanced email validation with security checks
+const emailSchema = z.string()
+  .email('Invalid email address')
+  .min(3, 'Email too short')
+  .max(254, 'Email too long') // RFC 5321
+  .transform(email => email.toLowerCase().trim());
+
+// Enhanced password validation with security requirements
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password too long')
+  .refine(pwd => /[A-Z]/.test(pwd), 'Password must contain at least one uppercase letter')
+  .refine(pwd => /[a-z]/.test(pwd), 'Password must contain at least one lowercase letter')
+  .refine(pwd => /[0-9]/.test(pwd), 'Password must contain at least one number');
+
 // Common validation schemas
 export const schemas = {
   // Auth schemas
   signUp: z.object({
-    email: z.string().email('Invalid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+    email: emailSchema,
+    password: passwordSchema,
     metadata: z.record(z.any()).optional(),
   }),
 
   signIn: z.object({
-    email: z.string().email('Invalid email address'),
+    email: emailSchema,
     password: z.string().min(1, 'Password is required'),
   }),
 
