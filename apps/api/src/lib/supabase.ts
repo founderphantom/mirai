@@ -207,12 +207,8 @@ export const dbHelpers = {
       settings?: Record<string, unknown>;
     } = {}
   ) {
-    // Sanitize user inputs to prevent XSS
-    const sanitizeString = (str: string | null | undefined): string | null => {
-      if (!str) return null;
-      // Remove any HTML tags and scripts
-      return str.replace(/<[^>]*>/g, '').replace(/[<>'"]/g, '').trim();
-    };
+    // Import sanitization utilities for proper XSS prevention
+    const { sanitizeText, sanitizeJson } = await import('../utils/sanitization');
 
     // Validate temperature range
     const temperature = Math.min(Math.max(options.temperature || 0.7, 0), 2);
@@ -223,17 +219,17 @@ export const dbHelpers = {
       .from('conversations') as any)
       .insert({
         user_id: userId,
-        title: sanitizeString(title) || 'New Conversation',
+        title: sanitizeText(title) || 'New Conversation',
         summary: null,
         model_id: modelId,
         provider_id: providerId,
         avatar_id: options.avatarId || null,
         voice_id: options.voiceId || null,
-        personality_template: options.personalityTemplate || null,
-        system_prompt: sanitizeString(options.systemPrompt),
+        personality_template: sanitizeText(options.personalityTemplate),
+        system_prompt: sanitizeText(options.systemPrompt),
         temperature: temperature,
         max_tokens: maxTokens,
-        settings: (options.settings || {}) as any,
+        settings: sanitizeJson(options.settings || {}) as any,
         tags: [],
         is_archived: false,
         is_starred: false,
@@ -271,13 +267,25 @@ export const dbHelpers = {
       metadata?: Record<string, unknown>;
     } = {}
   ) {
+    // Import sanitization utilities
+    const { sanitizeText, sanitizeJson, sanitizeMarkdown } = await import('../utils/sanitization');
+    
+    // Sanitize content based on content type
+    let sanitizedContent = content;
+    if (options.contentType === 'markdown') {
+      sanitizedContent = sanitizeMarkdown(content) || content;
+    } else if (role === 'user') {
+      // User messages get stricter sanitization
+      sanitizedContent = sanitizeText(content) || content;
+    }
+    
     const messageData = {
       conversation_id: conversationId,
       user_id: userId,
       role,
-      content,
+      content: sanitizedContent,
       content_type: options.contentType || 'text',
-      attachments: (options.attachments || []) as any,
+      attachments: sanitizeJson(options.attachments || []) as any,
       prompt_tokens: options.promptTokens || 0,
       completion_tokens: options.completionTokens || 0,
       total_tokens: options.totalTokens || 0,
@@ -287,11 +295,11 @@ export const dbHelpers = {
       finish_reason: options.finishReason || null,
       flagged_for_moderation: false,
       moderation_results: {} as any,
-      function_call: (options.functionCall || null) as any,
-      tool_calls: (options.toolCalls || null) as any,
+      function_call: sanitizeJson(options.functionCall || null) as any,
+      tool_calls: sanitizeJson(options.toolCalls || null) as any,
       rating: null,
       feedback: null,
-      metadata: (options.metadata || {}) as any,
+      metadata: sanitizeJson(options.metadata || {}) as any,
       created_at: new Date().toISOString(),
       edited_at: null,
       deleted_at: null,

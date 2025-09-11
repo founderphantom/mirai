@@ -4,43 +4,69 @@
  */
 
 import { NextApiRequest, NextApiResponse } from 'next';
+import helmet from 'helmet';
 import { getConfig } from '@/lib/config';
+import { logger } from '@/utils/logger';
 
 /**
- * Apply security headers to responses
+ * Apply security headers to responses using Helmet
  */
 export function securityHeaders(req: NextApiRequest, res: NextApiResponse, next: () => void) {
   const config = getConfig();
   const isProduction = config.NODE_ENV === 'production';
 
-  // Content Security Policy
-  const cspDirectives = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'", // Allow inline scripts for Next.js
-    "style-src 'self' 'unsafe-inline'", // Allow inline styles
-    "img-src 'self' data: https:",
-    "font-src 'self' data:",
-    "connect-src 'self' " + (config.SUPABASE_URL || ''),
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "upgrade-insecure-requests",
-  ];
+  // Configure Helmet for enhanced security
+  const helmetConfig = helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Required for Next.js
+        styleSrc: ["'self'", "'unsafe-inline'"],  // Required for inline styles
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", config.SUPABASE_URL || ''],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: isProduction ? [] : null,
+      },
+    },
+    crossOriginEmbedderPolicy: !isProduction, // Disable in dev for easier debugging
+    crossOriginOpenerPolicy: { policy: "same-origin" },
+    crossOriginResourcePolicy: { policy: "same-origin" },
+    dnsPrefetchControl: { allow: false },
+    frameguard: { action: 'deny' },
+    hidePoweredBy: true,
+    hsts: isProduction ? {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    } : false,
+    ieNoOpen: true,
+    noSniff: true,
+    originAgentCluster: true,
+    permittedCrossDomainPolicies: false,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    xssFilter: true,
+  });
 
-  // Apply security headers
-  res.setHeader('Content-Security-Policy', cspDirectives.join('; '));
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-
-  // HSTS for production
-  if (isProduction) {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  }
-
-  next();
+  // Apply Helmet middleware
+  helmetConfig(req as any, res as any, () => {
+    // Additional custom security headers
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    
+    // Add security logging for production
+    if (isProduction) {
+      logger.debug('Security headers applied', {
+        url: req.url,
+        method: req.method,
+        ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+      });
+    }
+    
+    next();
+  });
 }
 
 /**
@@ -71,20 +97,31 @@ export function validateOrigin(req: NextApiRequest, res: NextApiResponse, next: 
 
 /**
  * Sanitize user input to prevent XSS
+ * This is a wrapper around our comprehensive sanitization utilities
  */
-export function sanitizeInput(input: any): any {
+export async function sanitizeInput(input: any): Promise<any> {
+  const { sanitizeJson } = await import('@/utils/sanitization');
+  return sanitizeJson(input, 'strict');
+}
+
+/**
+ * Synchronous sanitization for immediate use
+ * Note: This is less comprehensive than the async version
+ */
+export function sanitizeInputSync(input: any): any {
   if (typeof input === 'string') {
-    // Remove HTML tags and dangerous characters
+    // Basic HTML and script removal
     return input
       .replace(/<script[^>]*>.*?<\/script>/gi, '') // Remove script tags
       .replace(/<[^>]+>/g, '') // Remove HTML tags
       .replace(/javascript:/gi, '') // Remove javascript: protocol
+      .replace(/data:text\/html/gi, '') // Remove data URLs with HTML
       .replace(/on\w+\s*=/gi, '') // Remove event handlers
       .trim();
   }
   
   if (Array.isArray(input)) {
-    return input.map(sanitizeInput);
+    return input.map(sanitizeInputSync);
   }
   
   if (input && typeof input === 'object') {
@@ -92,8 +129,8 @@ export function sanitizeInput(input: any): any {
     for (const key in input) {
       if (Object.prototype.hasOwnProperty.call(input, key)) {
         // Sanitize the key as well
-        const sanitizedKey = sanitizeInput(key);
-        sanitized[sanitizedKey] = sanitizeInput(input[key]);
+        const sanitizedKey = sanitizeInputSync(key);
+        sanitized[sanitizedKey] = sanitizeInputSync(input[key]);
       }
     }
     return sanitized;
