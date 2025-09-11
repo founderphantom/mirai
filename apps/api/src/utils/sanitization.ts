@@ -55,7 +55,8 @@ export function sanitizeHtml(
   input: string | null | undefined,
   mode: 'strict' | 'basic' | 'markdown' = 'strict'
 ): string | null {
-  if (!input) return null;
+  if (input === null || input === undefined) return null;
+  if (input === '') return '';
   
   try {
     const config = PURIFY_CONFIGS[mode];
@@ -86,7 +87,8 @@ export function sanitizeHtml(
  * @returns Sanitized string with no HTML
  */
 export function sanitizeText(input: string | null | undefined): string | null {
-  if (!input) return null;
+  if (input === null || input === undefined) return null;
+  if (input === '') return '';
   
   // Use strict mode to remove all HTML
   return sanitizeHtml(input, 'strict');
@@ -210,8 +212,13 @@ export function sanitizeJson(
     const sanitized: any = {};
     for (const [key, value] of Object.entries(data)) {
       // Sanitize the key as well (in case of dynamic keys)
-      const cleanKey = sanitizeText(key) || key;
-      sanitized[cleanKey] = sanitizeJson(value, mode);
+      // Note: If key contains only script tags, it will be empty after sanitization
+      // In that case, we skip the property for security
+      const cleanKey = sanitizeText(key);
+      if (cleanKey) {
+        sanitized[cleanKey] = sanitizeJson(value, mode);
+      }
+      // If cleanKey is empty/null, we skip this property entirely for security
     }
     return sanitized;
   }
@@ -264,11 +271,17 @@ export function sanitizeFilename(filename: string | null | undefined): string | 
   let cleaned = basename
     .replace(/[^a-zA-Z0-9._-]/g, '_')  // Replace special chars with underscore
     .replace(/\.{2,}/g, '_')            // Replace multiple dots
-    .replace(/^\.+/, '')                // Remove leading dots
+    .replace(/^\.+/, '_')               // Replace leading dots with underscore
     .trim();
   
+  // Special case: if the original was exactly '..' return null
+  if (basename === '..' || basename === '.') {
+    logger.warn('Invalid filename after sanitization', { original: filename });
+    return null;
+  }
+  
   // Ensure the filename is not empty after cleaning
-  if (!cleaned || cleaned === '.' || cleaned === '..') {
+  if (!cleaned) {
     logger.warn('Invalid filename after sanitization', { original: filename });
     return null;
   }

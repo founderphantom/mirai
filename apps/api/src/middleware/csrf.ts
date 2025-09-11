@@ -14,7 +14,7 @@ import { logger } from '@/utils/logger';
 const cookieSettings = getCookieSettings();
 
 const {
-  generateToken,
+  generateCsrfToken: generateToken,
   validateRequest,
   doubleCsrfProtection,
 } = doubleCsrf({
@@ -27,7 +27,7 @@ const {
     secure: cookieSettings.secure,
     maxAge: 86400, // 24 hours
   },
-  getTokenFromRequest: (req: any) => {
+  getCsrfTokenFromRequest: (req: any) => {
     // Try to get token from header first (preferred)
     const headerToken = req.headers['x-csrf-token'];
     if (headerToken) return headerToken;
@@ -41,6 +41,14 @@ const {
     if (queryToken) return queryToken;
     
     return null;
+  },
+  // Required: Session identifier for token generation
+  getSessionIdentifier: (req: any) => {
+    // Use a combination of IP and user agent as session identifier
+    // This helps tie the CSRF token to a specific client
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    return `${ip}:${userAgent}`;
   },
 });
 
@@ -190,7 +198,11 @@ export const withCsrf = (handler: Function) => csrfProtection(handler);
  */
 export const configureCsrf = () => {
   // Validate CSRF secret is set in production
-  if (isProduction() && (!process.env.CSRF_SECRET || process.env.CSRF_SECRET === 'csrf-secret-key-change-in-production')) {
+  // Check both NODE_ENV and the isProduction function
+  const isProd = process.env.NODE_ENV === 'production' || isProduction();
+  const csrfSecret = process.env.CSRF_SECRET;
+  
+  if (isProd && (!csrfSecret || csrfSecret === 'csrf-secret-key-change-in-production')) {
     throw new Error('CSRF_SECRET environment variable must be set in production');
   }
   
@@ -198,7 +210,7 @@ export const configureCsrf = () => {
     cookieName: '_csrf',
     sameSite: cookieSettings.sameSite,
     secure: cookieSettings.secure,
-    environment: isProduction() ? 'production' : 'development',
+    environment: isProd ? 'production' : 'development',
   });
 };
 

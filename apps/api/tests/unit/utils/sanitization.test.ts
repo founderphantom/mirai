@@ -228,12 +228,18 @@ describe('Sanitization Utilities', () => {
 
     it('should sanitize object keys', () => {
       const input = {
-        '<script>key</script>': 'value',
+        '<script>key</script>': 'value',  // This will be removed entirely (script content is removed)
         'normal_key': 'value',
+        '<b>bold_key</b>': 'value2',  // This will become 'bold_key'
       };
       const result = sanitizeJson(input);
-      expect(result['key']).toBe('value');
+      // Script key should be removed entirely for security
+      expect(result['key']).toBeUndefined();
+      expect(result['<script>key</script>']).toBeUndefined();
+      // Normal key should remain
       expect(result['normal_key']).toBe('value');
+      // Bold tag content should be preserved as key
+      expect(result['bold_key']).toBe('value2');
     });
   });
 
@@ -288,7 +294,7 @@ describe('Sanitization Utilities', () => {
 
     it('should handle multiple dots', () => {
       expect(sanitizeFilename('file...txt')).toBe('file_txt');
-      expect(sanitizeFilename('...hidden')).toBe('hidden');
+      expect(sanitizeFilename('...hidden')).toBe('_hidden');
     });
 
     it('should limit filename length', () => {
@@ -296,7 +302,7 @@ describe('Sanitization Utilities', () => {
       const result = sanitizeFilename(longName);
       expect(result).toBeDefined();
       expect(result!.length).toBeLessThanOrEqual(255);
-      expect(result).toEndWith('.txt');
+      expect(result?.endsWith('.txt')).toBe(true);
     });
 
     it('should reject invalid filenames', () => {

@@ -53,7 +53,7 @@ describe('CSRF Protection Middleware', () => {
 
       // Mock generateToken to throw an error
       const originalEnv = process.env.CSRF_SECRET;
-      process.env.CSRF_SECRET = undefined;
+      delete process.env.CSRF_SECRET;
 
       getCsrfToken(req, res);
 
@@ -246,7 +246,7 @@ describe('CSRF Protection Middleware', () => {
       }));
 
       process.env.NODE_ENV = 'production';
-      process.env.CSRF_SECRET = undefined;
+      delete process.env.CSRF_SECRET;
 
       // Re-import to get mocked version
       jest.resetModules();

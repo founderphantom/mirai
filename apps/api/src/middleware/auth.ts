@@ -494,3 +494,6 @@ export function authenticate(handler: (req: AuthenticatedRequest, res: NextApiRe
     return handler(req, res);
   };
 }
+
+// Alias for consistency with other middleware
+export const withAuth = requireAuth;
