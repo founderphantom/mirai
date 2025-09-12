@@ -89,6 +89,7 @@
     "vue-i18n": "^11.1.11",
     "vue-router": "^4.5.1",
     "vue-sonner": "^2.0.8",
+    "web-vitals": "^5.1.0",
     "workbox-window": "^7.3.0",
     "xsschema": "catalog:",
     "yauzl": "^3.2.0",

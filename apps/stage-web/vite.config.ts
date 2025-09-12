@@ -113,21 +113,40 @@ export default defineConfig({
             }
           }
         },
-        // Use consistent chunk names for better caching
+        // Production-safe file naming with consistent patterns
+        entryFileNames: 'js/[name]-[hash:8].js',
         chunkFileNames: (chunkInfo) => {
-          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk'
-          return `chunks/[name]-${facadeModuleId}-[hash].js`
+          const name = chunkInfo.name || 'chunk'
+          // Use shorter hash for better caching (8 chars is sufficient)
+          return `js/[name]-[hash:8].js`
         },
         assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.')
-          const ext = info[info.length - 1]
-          if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
-            return `images/[name]-[hash][extname]`
+          // Production-safe handling with proper fallbacks
+          const name = assetInfo.name || 'asset'
+          
+          // Extract extension safely
+          const lastDotIndex = name.lastIndexOf('.')
+          const ext = lastDotIndex > 0 ? name.slice(lastDotIndex + 1).toLowerCase() : ''
+          
+          // Organized asset structure for better CDN caching
+          if (/^(png|jpe?g|svg|gif|tiff|bmp|ico|webp|avif)$/i.test(ext)) {
+            return 'static/images/[name]-[hash:8][extname]'
           }
-          if (/woff2?|ttf|otf|eot/i.test(ext)) {
-            return `fonts/[name]-[hash][extname]`
+          
+          if (/^(woff2?|ttf|otf|eot)$/i.test(ext)) {
+            return 'static/fonts/[name]-[hash:8][extname]'
           }
-          return `assets/[name]-[hash][extname]`
+          
+          if (/^(css)$/i.test(ext)) {
+            return 'static/css/[name]-[hash:8][extname]'
+          }
+          
+          if (/^(mp4|webm|ogg|mp3|wav|flac|aac)$/i.test(ext)) {
+            return 'static/media/[name]-[hash:8][extname]'
+          }
+          
+          // Default fallback for all other assets
+          return 'static/assets/[name]-[hash:8][extname]'
         },
       },
       // Optimize for tree shaking
