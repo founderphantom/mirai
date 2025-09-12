@@ -17,9 +17,139 @@ import { templateCompilerOptions } from '@tresjs/core'
 import { LFS, SpaceCard } from 'hfup/vite'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { VueMcp } from 'vite-plugin-vue-mcp'
+// import { visualizer } from 'vite-bundle-visualizer' // Will add back when properly configured
+import type { Plugin } from 'vite'
+
+// Custom plugin for mobile performance optimizations
+function mobileOptimizationPlugin(): Plugin {
+  return {
+    name: 'mobile-optimization',
+    transformIndexHtml(html) {
+      // Add critical performance hints
+      return html.replace(
+        '<head>',
+        `<head>
+    <!-- Preconnect to critical domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    
+    <!-- Viewport and mobile optimizations -->
+    <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">`
+      )
+    },
+  }
+}
 
 export default defineConfig({
+  // Build optimizations for mobile performance
+  build: {
+    target: 'es2020',
+    cssTarget: 'chrome80',
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info'],
+        passes: 2,
+      },
+      mangle: {
+        safari10: true,
+      },
+      format: {
+        comments: false,
+      },
+    },
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        // Advanced code splitting for optimal mobile loading
+        manualChunks: (id) => {
+          // Core vendor chunks (always loaded)
+          if (id.includes('node_modules')) {
+            if (id.includes('vue') || id.includes('vue-router') || id.includes('pinia')) {
+              return 'vendor-core'
+            }
+            
+            // UI libraries
+            if (id.includes('reka-ui') || id.includes('@formkit/auto-animate')) {
+              return 'vendor-ui'
+            }
+            
+            // 3D libraries (lazy loaded)
+            if (id.includes('three') || id.includes('@tresjs')) {
+              return 'vendor-3d'
+            }
+            
+            // ML/AI libraries (lazy loaded)
+            if (id.includes('@huggingface') || id.includes('onnx') || id.includes('transformers')) {
+              return 'vendor-ml'
+            }
+            
+            // Audio libraries (lazy loaded)
+            if (id.includes('vad-web') || id.includes('unspeech') || id.includes('mediabunny')) {
+              return 'vendor-audio'
+            }
+            
+            // API/Network libraries
+            if (id.includes('supabase') || id.includes('ofetch')) {
+              return 'vendor-api'
+            }
+            
+            // i18n
+            if (id.includes('vue-i18n')) {
+              return 'vendor-i18n'
+            }
+            
+            // Utils
+            if (id.includes('date-fns') || id.includes('nanoid') || id.includes('localforage')) {
+              return 'vendor-utils'
+            }
+          }
+        },
+        // Use consistent chunk names for better caching
+        chunkFileNames: (chunkInfo) => {
+          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk'
+          return `chunks/[name]-${facadeModuleId}-[hash].js`
+        },
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.')
+          const ext = info[info.length - 1]
+          if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
+            return `images/[name]-[hash][extname]`
+          }
+          if (/woff2?|ttf|otf|eot/i.test(ext)) {
+            return `fonts/[name]-[hash][extname]`
+          }
+          return `assets/[name]-[hash][extname]`
+        },
+      },
+      // Optimize for tree shaking
+      treeshake: {
+        preset: 'recommended',
+        moduleSideEffects: false,
+      },
+    },
+    // Enable source maps for debugging (disable in production for performance)
+    sourcemap: false,
+    // Inline assets smaller than 4kb
+    assetsInlineLimit: 4096,
+  },
+  
   optimizeDeps: {
+    include: [
+      'vue',
+      'vue-router',
+      'pinia',
+      '@vueuse/core',
+      '@vueuse/shared',
+    ],
     exclude: [
       // Internal Packages
       '@proj-airi/stage-ui/*',
@@ -45,6 +175,8 @@ export default defineConfig({
       '@framework/utils/cubismdebug',
       '@framework/model/cubismmoc',
     ],
+    // Force optimization for better initial load
+    force: true,
   },
 
   resolve: {
@@ -59,6 +191,18 @@ export default defineConfig({
   },
 
   plugins: [
+    // Mobile performance optimizations
+    mobileOptimizationPlugin(),
+    
+    // Bundle analyzer (only in build with --analyze flag)
+    // Temporarily disabled - will re-enable with proper setup
+    // process.env.ANALYZE ? visualizer({
+    //   open: true,
+    //   gzipSize: true,
+    //   brotliSize: true,
+    //   filename: 'dist/stats.html',
+    // }) : null,
+    
     Info(),
 
     Yaml(),
@@ -142,6 +286,7 @@ export default defineConfig({
 
     // https://github.com/webfansplz/vite-plugin-vue-devtools
     VueDevTools(),
+    VueMcp(),
 
     DownloadLive2DSDK(),
     Download('https://dist.ayaka.moe/live2d-models/hiyori_free_zh.zip', 'hiyori_free_zh.zip', 'assets/live2d/models'),
@@ -166,5 +311,5 @@ export default defineConfig({
       ],
       short_description: 'AI driven VTuber & Companion, supports Live2D and VRM.',
     }),
-  ],
+  ].filter(Boolean),
 })

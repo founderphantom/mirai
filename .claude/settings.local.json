@@ -34,7 +34,8 @@
       "Bash(pnpm update:*)",
       "Bash(npm run typecheck:*)",
       "WebSearch",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "mcp__vue-mcp__get-component-tree"
     ],
     "deny": [],
     "ask": []

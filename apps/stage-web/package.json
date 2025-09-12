@@ -11,10 +11,14 @@
   "license": "MIT",
   "scripts": {
     "build": "vite build",
+    "build:analyze": "ANALYZE=true vite build",
     "dev": "vite",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "perf:test": "vite build && vite preview",
+    "perf:lighthouse": "npx lighthouse http://localhost:4173 --view --preset=desktop",
+    "perf:lighthouse:mobile": "npx lighthouse http://localhost:4173 --view --preset=mobile"
   },
   "dependencies": {
     "@date-fns/utc": "^2.1.1",
@@ -126,6 +130,7 @@
     "vite-plugin-pwa": "^1.0.3",
     "vite-plugin-vue-devtools": "^8.0.1",
     "vite-plugin-vue-layouts": "^0.11.0",
+    "vite-plugin-vue-mcp": "^0.3.2",
     "vue-tsc": "^3.0.6"
   }
 }
