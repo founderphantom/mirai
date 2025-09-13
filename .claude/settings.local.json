@@ -43,6 +43,9 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase",
-    "playwright"
+    "playwright",
+    "terraform",
+    "github",
+    "sentry"
   ]
 }
