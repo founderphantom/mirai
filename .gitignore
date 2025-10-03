@@ -100,4 +100,8 @@ twitter-session.json
 # Symlinks created by nix build
 result*
 
+# Cloudflare Workers
+apps/stage-web/.wrangler
+apps/stage-web/.cache
+apps/stage-web/.r2-assets-backup
 
