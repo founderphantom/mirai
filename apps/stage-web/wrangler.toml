@@ -1,6 +1,7 @@
 name = "mirai-stage-web"
 main = "src/worker.ts"
 compatibility_date = "2025-01-01"
+workers_dev = true
 
 # Static Assets Configuration
 assets = { directory = "./dist", binding = "ASSETS" }
@@ -12,8 +13,3 @@ bucket_name = "mirai-assets"
 
 [observability]
 enabled = true
-
-# Route pattern - uncomment and configure when you have a domain
-# routes = [
-#   { pattern = "app.miraichat.ai", custom_domain = true }
-# ]

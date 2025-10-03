@@ -105,3 +105,5 @@ apps/stage-web/.wrangler
 apps/stage-web/.cache
 apps/stage-web/.r2-assets-backup
 
+settings.local.json
+
