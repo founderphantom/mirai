@@ -48,11 +48,12 @@
                               ↓ (HTTPS/WebSocket)
 ┌──────────────────────────────────────────────────────────────┐
 │         Cloudflare Worker (API Gateway - /api/*)             │
-│  - JWT verification (Supabase/Better-Auth)                   │
+│  - Better-Auth authentication & JWT verification             │
+│  - Polar payment webhooks & checkout                         │
 │  - Rate limiting & DDoS protection                           │
 │  - Request routing & orchestration                           │
 │  - Service bindings to:                                      │
-│    • D1 (user data, character ownership)                     │
+│    • D1 (user data, character ownership, subscriptions)      │
 │    • R2 (Live2D models, avatars)                             │
 │    • KV (session cache)                                      │
 │    • Durable Objects (voice session state)                   │
@@ -60,13 +61,29 @@
 └──────────────────────────────────────────────────────────────┘
          │                    │                    │
          ↓                    ↓                    ↓
-┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│   D1 (SQL)   │   │  R2 (Storage)    │   │ Durable Objects  │
-│              │   │                  │   │                  │
-│ • Users      │   │ • Live2D models  │   │ • Voice sessions │
-│ • Characters │   │ • Avatars        │   │ • WebRTC state   │
-│ • Purchases  │   │ • Audio clips    │   │ • Connection mgmt│
-└──────────────┘   └──────────────────┘   └──────────────────┘
+┌──────────────┐   ┌──────────────────────────────────────┐   ┌──────────────────┐
+│   D1 (SQL)   │   │         R2 Storage (2 Buckets)       │   │ Durable Objects  │
+│              │   │                                      │   │                  │
+│ • Users      │   │ PUBLIC_ASSETS (mirai-public-assets)  │   │ • Voice sessions │
+│ • Characters │   │ • Default Live2D models              │   │ • WebRTC state   │
+│ • Subs       │   │ • Shared textures/fonts              │   │ • Connection mgmt│
+│ • Polar IDs  │   │ • VRM models                         │   │                  │
+│              │   │ • WASM binaries (>25MB)              │   │                  │
+│              │   │                                      │   │                  │
+│              │   │ USER_ASSETS (mirai-user-assets)      │   │                  │
+│              │   │ • User Live2D uploads                │   │                  │
+│              │   │ • User avatars                       │   │                  │
+│              │   │ • Audio recordings                   │   │                  │
+└──────────────┘   └──────────────────────────────────────┘   └──────────────────┘
+         │
+         ↓ (Webhooks)
+┌──────────────────────────────────────────────────────────────┐
+│                     Polar (Payment Service)                   │
+│  - Subscription management                                   │
+│  - Usage-based billing                                       │
+│  - Customer portal                                           │
+│  - Checkout sessions                                         │
+└──────────────────────────────────────────────────────────────┘
                               │
                               ↓
 ┌──────────────────────────────────────────────────────────────┐
@@ -121,13 +138,55 @@ apps/stage-web/
 │   │   ├── authStore.ts             // Auth state
 │   │   ├── characterStore.ts        // Character data
 │   │   └── sessionStore.ts          // Voice session state
+│   ├── worker.ts                    // Static Assets Worker
 │   └── App.tsx
 ```
 
+**Static Assets Worker (`worker.ts`):**
+```typescript
+// apps/stage-web/src/worker.ts
+export interface Env {
+  ASSETS: Fetcher
+  PUBLIC_ASSETS: R2Bucket  // Public large assets (>25MB)
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+    const pathname = url.pathname
+
+    // Serve large assets (fonts, models, WASM) from R2
+    const r2AssetPaths = [
+      '/assets/cjkFonts_allseto_v1.11-ByBdljxl.ttf',
+      '/assets/XiaolaiSC-Regular-SNWuh554.ttf',
+      '/assets/duckdb-coi-CSr8FQO4.wasm',
+      '/assets/live2d/models/hiyori_pro_zh.zip',
+      '/assets/vrm/models/AvatarSample-A/AvatarSample_A.vrm',
+    ]
+
+    if (r2AssetPaths.includes(pathname)) {
+      const object = await env.PUBLIC_ASSETS.get(pathname.slice(1))
+      if (!object) return new Response('Not found', { status: 404 })
+
+      const headers = new Headers()
+      object.writeHttpMetadata(headers)
+      headers.set('Cache-Control', 'max-age=31536000, immutable')
+      headers.set('Access-Control-Allow-Origin', '*')
+
+      return new Response(object.body, { headers })
+    }
+
+    // Serve other assets from bundled static files
+    return env.ASSETS.fetch(request)
+  }
+}
+```
+
 **Deployment:**
-- Cloudflare Pages
+- Cloudflare Pages with Static Assets Worker
 - Auto-deploy from `main` branch
 - Custom domain: `app.miraichat.ai`
+- R2 binding: `PUBLIC_ASSETS` → `mirai-public-assets`
 
 ---
 
@@ -146,8 +205,9 @@ database_name = "mirai-production"
 database_id = "your-d1-id"
 
 [[r2_buckets]]
-binding = "ASSETS"
-bucket_name = "mirai-assets"
+binding = "USER_ASSETS"
+bucket_name = "mirai-user-assets"
+# Private bucket: User uploads, avatars, audio recordings (auth required)
 
 [[kv_namespaces]]
 binding = "CACHE"
@@ -301,78 +361,21 @@ console.log(`Inworld Runtime listening on port ${port}`)
 
 ## Authentication System
 
-### Option A: Supabase Auth (Recommended for MVP)
-
-**Why Supabase:**
-- ✅ FREE for <50K MAU
-- ✅ Pre-built OAuth (Google, Discord, GitHub)
-- ✅ JWT token generation
-- ✅ Email verification & password reset
-- ✅ Row-level security (RLS) if needed
-
-**Setup:**
-```typescript
-// apps/stage-web/src/lib/supabase.ts
-import { createClient } from '@supabase/supabase-js'
-
-export const supabase = createClient(
-  'https://your-project.supabase.co',
-  'your-anon-key'
-)
-
-// Sign in with Google
-export async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: 'https://app.miraichat.ai/callback'
-    }
-  })
-  return { data, error }
-}
-
-// Get JWT token for API gateway
-export async function getAuthToken() {
-  const { data: { session } } = await supabase.auth.getSession()
-  return session?.access_token
-}
-```
-
-**API Gateway JWT Verification:**
-```typescript
-// apps/workers/api-gateway/src/middleware/auth.ts
-import { createRemoteJWKSet, jwtVerify } from 'jose'
-
-const JWKS = createRemoteJWKSet(
-  new URL('https://your-project.supabase.co/auth/v1/jwks')
-)
-
-export async function verifySupabaseJWT(token: string) {
-  try {
-    const { payload } = await jwtVerify(token, JWKS, {
-      issuer: 'https://your-project.supabase.co/auth/v1'
-    })
-    return payload // Contains user_id, email, etc.
-  } catch (error) {
-    throw new Error('Invalid JWT')
-  }
-}
-```
-
----
-
-### Option B: Better-Auth (More Control)
+### Better-Auth (Recommended for MVP)
 
 **Why Better-Auth:**
-- ✅ Self-hosted on Cloudflare Workers
-- ✅ Zero vendor lock-in
-- ✅ Full customization
-- ✅ D1 integration
+- ✅ Self-hosted on Cloudflare Workers (no vendor lock-in)
+- ✅ Full control & customization
+- ✅ Native D1 integration
+- ✅ Built-in Polar payment plugin
+- ✅ FREE (no usage limits)
+- ✅ Pre-built OAuth (Google, Discord, GitHub, etc.)
 
-**Setup:**
+**API Gateway Setup:**
 ```typescript
-// apps/workers/auth-service/src/index.ts
+// apps/workers/api-gateway/src/auth.ts
 import { betterAuth } from 'better-auth'
+import { polar } from 'better-auth/plugins/polar'
 
 export const auth = betterAuth({
   database: {
@@ -380,35 +383,120 @@ export const auth = betterAuth({
     d1: env.DB
   },
   emailAndPassword: {
-    enabled: true
+    enabled: true,
+    requireEmailVerification: true
   },
   socialProviders: {
     google: {
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET
+    },
+    discord: {
+      clientId: env.DISCORD_CLIENT_ID,
+      clientSecret: env.DISCORD_CLIENT_SECRET
     }
-  }
+  },
+  plugins: [
+    polar({
+      apiKey: env.POLAR_API_KEY,
+      createCustomerOnSignUp: true, // Auto-create Polar customer
+      use: [
+        checkout({
+          organizationId: env.POLAR_ORGANIZATION_ID
+        }),
+        portal(), // Customer portal for managing subscriptions
+        usage(), // Usage-based billing (track voice minutes)
+        webhooks({
+          secret: env.POLAR_WEBHOOK_SECRET
+        })
+      ]
+    })
+  ]
 })
-
-export default {
-  async fetch(request: Request, env: Env) {
-    return auth.handler(request)
-  }
-}
 ```
 
-**Frontend:**
+**API Gateway Routes:**
+```typescript
+// apps/workers/api-gateway/src/index.ts
+import { Hono } from 'hono'
+import { auth } from './auth'
+
+const app = new Hono<Env>()
+
+// Mount auth routes at /api/auth/*
+app.all('/api/auth/*', async (c) => {
+  return auth.handler(c.req.raw)
+})
+
+// Protected routes - require JWT
+app.use('/api/*', async (c, next) => {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const token = authHeader.replace('Bearer ', '')
+  const session = await auth.api.getSession({ headers: { cookie: token } })
+
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401)
+  }
+
+  c.set('user', session.user)
+  await next()
+})
+
+// API routes here...
+```
+
+**Frontend Client:**
 ```typescript
 // apps/stage-web/src/lib/auth.ts
 import { createAuthClient } from '@better-auth/react'
 
 export const authClient = createAuthClient({
-  baseURL: 'https://auth.miraichat.ai'
+  baseURL: 'https://api.miraichat.ai/api/auth'
 })
 
-// Usage
-await authClient.signIn.social({ provider: 'google' })
-const session = await authClient.getSession()
+// Sign in with Google
+export async function signInWithGoogle() {
+  return authClient.signIn.social({
+    provider: 'google',
+    callbackURL: '/dashboard'
+  })
+}
+
+// Sign in with email/password
+export async function signIn(email: string, password: string) {
+  return authClient.signIn.email({ email, password })
+}
+
+// Get current session
+export async function getSession() {
+  return authClient.getSession()
+}
+
+// Sign out
+export async function signOut() {
+  return authClient.signOut()
+}
+```
+
+**Frontend Usage:**
+```typescript
+// apps/stage-web/src/App.tsx
+import { useSession } from '@better-auth/react'
+
+function App() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return <div>Loading...</div>
+  if (!session) return <LoginPage />
+
+  return (
+    <Dashboard user={session.user} />
+  )
+}
 ```
 
 ---
@@ -418,15 +506,31 @@ const session = await authClient.getSession()
 ### D1 Database: `mirai-production`
 
 ```sql
--- Users table (sync from Supabase Auth or Better-Auth)
-CREATE TABLE users (
-  id TEXT PRIMARY KEY, -- UUID from auth provider
-  email TEXT UNIQUE NOT NULL,
-  display_name TEXT,
-  avatar_url TEXT,
-  subscription_tier TEXT DEFAULT 'free', -- free, pro, enterprise
+-- Users table (managed by Better-Auth)
+-- Better-Auth auto-creates: user, session, account, verification tables
+-- Add custom columns via migrations:
+ALTER TABLE user ADD COLUMN display_name TEXT;
+ALTER TABLE user ADD COLUMN avatar_url TEXT;
+ALTER TABLE user ADD COLUMN polar_customer_id TEXT;
+ALTER TABLE user ADD COLUMN subscription_tier TEXT DEFAULT 'free'; -- free, pro, enterprise
+ALTER TABLE user ADD COLUMN subscription_status TEXT; -- active, canceled, past_due
+
+-- Subscriptions table (synced from Polar webhooks)
+CREATE TABLE subscriptions (
+  id TEXT PRIMARY KEY, -- Polar subscription ID
+  user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  polar_customer_id TEXT NOT NULL,
+  product_id TEXT NOT NULL, -- Polar product ID
+  price_id TEXT NOT NULL, -- Polar price ID
+  status TEXT NOT NULL, -- active, canceled, incomplete, past_due
+  current_period_start TIMESTAMP NOT NULL,
+  current_period_end TIMESTAMP NOT NULL,
+  cancel_at_period_end BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  INDEX idx_user_subscription (user_id),
+  INDEX idx_polar_customer (polar_customer_id)
 );
 
 -- Characters table (user-owned AI characters)
@@ -498,11 +602,25 @@ CREATE TABLE voice_sessions (
   INDEX idx_active_sessions (status, user_id)
 );
 
+-- Usage tracking (for usage-based billing via Polar)
+CREATE TABLE usage_events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES user(id),
+  event_type TEXT NOT NULL, -- 'voice_minutes', 'character_creation', 'message_sent'
+  quantity INTEGER NOT NULL, -- e.g., number of minutes
+  metadata JSON, -- Additional context
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  polar_synced BOOLEAN DEFAULT FALSE, -- Track if sent to Polar API
+
+  INDEX idx_user_usage (user_id, created_at DESC),
+  INDEX idx_polar_sync (polar_synced, created_at)
+);
+
 -- Marketplace purchases (future feature)
 CREATE TABLE marketplace_items (
   id TEXT PRIMARY KEY,
   character_id TEXT REFERENCES characters(id),
-  creator_user_id TEXT NOT NULL REFERENCES users(id),
+  creator_user_id TEXT NOT NULL REFERENCES user(id),
   price_cents INTEGER NOT NULL,
   purchase_count INTEGER DEFAULT 0,
   rating_avg REAL DEFAULT 0.0,
@@ -511,12 +629,232 @@ CREATE TABLE marketplace_items (
 
 CREATE TABLE purchases (
   id TEXT PRIMARY KEY,
-  buyer_user_id TEXT NOT NULL REFERENCES users(id),
+  buyer_user_id TEXT NOT NULL REFERENCES user(id),
   marketplace_item_id TEXT NOT NULL REFERENCES marketplace_items(id),
+  polar_order_id TEXT, -- Polar order ID
   price_paid_cents INTEGER NOT NULL,
   purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+---
+
+## Payment System (Polar)
+
+### Subscription Tiers
+
+```typescript
+// Polar Product Configuration
+interface SubscriptionTier {
+  id: string
+  name: string
+  priceMonthly: number // USD cents
+  features: {
+    characterSlots: number
+    voiceMinutesPerMonth: number
+    longTermMemory: boolean
+    customLive2D: boolean
+    marketplace: boolean
+  }
+}
+
+const TIERS: SubscriptionTier[] = [
+  {
+    id: 'free',
+    name: 'Free',
+    priceMonthly: 0,
+    features: {
+      characterSlots: 1,
+      voiceMinutesPerMonth: 60, // 1 hour/month
+      longTermMemory: false,
+      customLive2D: false,
+      marketplace: false
+    }
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    priceMonthly: 999, // $9.99/month
+    features: {
+      characterSlots: 5,
+      voiceMinutesPerMonth: 600, // 10 hours/month
+      longTermMemory: true,
+      customLive2D: true,
+      marketplace: true
+    }
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    priceMonthly: 2999, // $29.99/month
+    features: {
+      characterSlots: 20,
+      voiceMinutesPerMonth: 3000, // 50 hours/month
+      longTermMemory: true,
+      customLive2D: true,
+      marketplace: true
+    }
+  }
+]
+```
+
+### Checkout Flow
+
+**Frontend Checkout:**
+```typescript
+// apps/stage-web/src/components/PricingPage.tsx
+import { authClient } from '../lib/auth'
+
+async function handleSubscribe(priceId: string) {
+  // Create checkout session via Better-Auth Polar plugin
+  const checkout = await authClient.polar.createCheckout({
+    priceId: priceId,
+    successUrl: 'https://app.miraichat.ai/dashboard?checkout=success',
+    cancelUrl: 'https://app.miraichat.ai/pricing'
+  })
+
+  // Redirect to Polar checkout
+  window.location.href = checkout.url
+}
+```
+
+**API Gateway Webhook Handler:**
+```typescript
+// apps/workers/api-gateway/src/webhooks/polar.ts
+export async function handlePolarWebhook(c: Context) {
+  const signature = c.req.header('x-polar-signature')
+  const payload = await c.req.text()
+
+  // Verify webhook signature (handled by Better-Auth plugin)
+  const event = await auth.polar.verifyWebhook(payload, signature)
+
+  switch (event.type) {
+    case 'subscription.created':
+      await handleSubscriptionCreated(event.data)
+      break
+
+    case 'subscription.updated':
+      await handleSubscriptionUpdated(event.data)
+      break
+
+    case 'subscription.canceled':
+      await handleSubscriptionCanceled(event.data)
+      break
+
+    case 'order.created':
+      await handleOrderCreated(event.data)
+      break
+  }
+
+  return c.json({ received: true })
+}
+
+async function handleSubscriptionCreated(subscription: any) {
+  const { customer_id, user_id, product_id, status } = subscription
+
+  // Update user subscription tier
+  await env.DB.prepare(`
+    INSERT INTO subscriptions (id, user_id, polar_customer_id, product_id, price_id, status, current_period_start, current_period_end)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    subscription.id,
+    user_id,
+    customer_id,
+    product_id,
+    subscription.price_id,
+    status,
+    new Date(subscription.current_period_start).toISOString(),
+    new Date(subscription.current_period_end).toISOString()
+  ).run()
+
+  // Update user tier
+  const tier = getTierFromProductId(product_id)
+  await env.DB.prepare(`
+    UPDATE user SET subscription_tier = ?, subscription_status = ? WHERE id = ?
+  `).bind(tier, status, user_id).run()
+}
+```
+
+### Usage-Based Billing
+
+**Track Voice Minutes:**
+```typescript
+// apps/workers/api-gateway/src/services/usage.ts
+export async function trackVoiceUsage(
+  userId: string,
+  conversationId: string,
+  durationSeconds: number
+) {
+  // Store usage event in D1
+  const eventId = crypto.randomUUID()
+  await env.DB.prepare(`
+    INSERT INTO usage_events (id, user_id, event_type, quantity, metadata, polar_synced)
+    VALUES (?, ?, 'voice_minutes', ?, ?, FALSE)
+  `).bind(
+    eventId,
+    userId,
+    Math.ceil(durationSeconds / 60), // Convert to minutes
+    JSON.stringify({ conversationId })
+  ).run()
+
+  // Report to Polar (async, non-blocking)
+  await reportUsageToPolar(userId, 'voice_minutes', Math.ceil(durationSeconds / 60))
+}
+
+async function reportUsageToPolar(userId: string, eventName: string, quantity: number) {
+  // Get user's Polar customer ID
+  const user = await env.DB.prepare(
+    'SELECT polar_customer_id FROM user WHERE id = ?'
+  ).bind(userId).first()
+
+  if (!user?.polar_customer_id) return
+
+  // Send usage event to Polar
+  await fetch(`https://api.polar.sh/v1/usage`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.POLAR_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      customer_id: user.polar_customer_id,
+      event_name: eventName,
+      quantity: quantity,
+      timestamp: new Date().toISOString()
+    })
+  })
+
+  // Mark as synced
+  await env.DB.prepare(
+    'UPDATE usage_events SET polar_synced = TRUE WHERE user_id = ? AND event_type = ? AND polar_synced = FALSE'
+  ).bind(userId, eventName).run()
+}
+```
+
+### Customer Portal
+
+**Frontend:**
+```typescript
+// apps/stage-web/src/components/SubscriptionSettings.tsx
+import { authClient } from '../lib/auth'
+
+async function openCustomerPortal() {
+  // Generate Polar customer portal URL via Better-Auth plugin
+  const portal = await authClient.polar.getPortalUrl({
+    returnUrl: 'https://app.miraichat.ai/settings'
+  })
+
+  // Open in new tab
+  window.open(portal.url, '_blank')
+}
+```
+
+**Users can:**
+- View subscription details
+- Update payment method
+- Cancel subscription
+- View invoices
+- Manage usage limits
 
 ---
 
@@ -1122,26 +1460,60 @@ await fetch('https://studio.inworld.ai/v1/workspaces/{workspace}/knowledge', {
 
 ## Live2D Asset Management
 
+### R2 Bucket Architecture
+
+**Two-Bucket Strategy:**
+
+1. **`mirai-public-assets` (Public, Edge-Cached)**
+   - Accessed via Static Assets Worker
+   - No authentication required
+   - Edge-cached for performance
+   - Contains shared/default assets
+
+2. **`mirai-user-assets` (Private, Auth Required)**
+   - Accessed via API Gateway
+   - Authentication required
+   - User-specific uploads
+   - No public access
+
 ### R2 Bucket Structure
 
+**mirai-public-assets/** (Public)
 ```
-mirai-assets/
-├── live2d-models/
-│   ├── {character-id}/
-│   │   ├── model.json
-│   │   ├── textures/
-│   │   │   ├── texture_00.png
-│   │   │   └── texture_01.png
-│   │   ├── motions/
-│   │   │   ├── idle.motion3.json
-│   │   │   ├── happy.motion3.json
-│   │   │   └── surprised.motion3.json
-│   │   └── expressions/
-│   │       ├── smile.exp3.json
-│   │       └── sad.exp3.json
-├── avatars/
-│   ├── {user-id}.png
-│   └── {character-id}-thumbnail.png
+assets/
+├── cjkFonts_allseto_v1.11-ByBdljxl.ttf      # >25MB
+├── XiaolaiSC-Regular-SNWuh554.ttf           # >25MB
+├── duckdb-coi-CSr8FQO4.wasm                 # >25MB
+├── duckdb-eh-BJOC5S4x.wasm                  # >25MB
+├── duckdb-mvp-8HYqhb4i.wasm                 # >25MB
+├── ort-wasm-simd-threaded.jsep-B0T3yYHD.wasm # >25MB
+├── live2d/
+│   └── models/
+│       └── hiyori_pro_zh.zip                # Default Live2D model
+└── vrm/
+    └── models/
+        ├── AvatarSample-A/AvatarSample_A.vrm
+        └── AvatarSample-B/AvatarSample_B.vrm
+```
+
+**mirai-user-assets/** (Private)
+```
+users/
+├── {user-id}/
+│   ├── avatar.png
+│   └── live2d-models/
+│       └── {character-id}/
+│           ├── model.json
+│           ├── textures/
+│           │   ├── texture_00.png
+│           │   └── texture_01.png
+│           ├── motions/
+│           │   ├── idle.motion3.json
+│           │   ├── happy.motion3.json
+│           │   └── surprised.motion3.json
+│           └── expressions/
+│               ├── smile.exp3.json
+│               └── sad.exp3.json
 └── audio/
     └── {conversation-id}/
         ├── user-audio-001.webm
@@ -1150,10 +1522,10 @@ mirai-assets/
 
 ### Asset Upload API
 
-**POST `/api/assets/upload`**
+**POST `/api/assets/upload`** (User Assets - Private)
 ```typescript
 async function uploadAsset(c: Context) {
-  const userId = c.get('jwtPayload').sub
+  const userId = c.get('user').id
   const formData = await c.req.formData()
   const file = formData.get('file') as File
   const characterId = formData.get('characterId') as string
@@ -1168,11 +1540,11 @@ async function uploadAsset(c: Context) {
     return c.json({ error: 'Unauthorized' }, 403)
   }
 
-  // Generate R2 key
-  const key = `${assetType}/${characterId}/${file.name}`
+  // Generate R2 key in user's private space
+  const key = `users/${userId}/live2d-models/${characterId}/${file.name}`
 
-  // Upload to R2
-  await c.env.ASSETS.put(key, file.stream(), {
+  // Upload to USER_ASSETS bucket (private)
+  await c.env.USER_ASSETS.put(key, file.stream(), {
     httpMetadata: {
       contentType: file.type
     }
@@ -1187,8 +1559,36 @@ async function uploadAsset(c: Context) {
 
   return c.json({
     key,
-    url: `https://assets.miraichat.ai/${key}`
+    url: `https://api.miraichat.ai/api/assets/${key}` // Served via API Gateway (auth required)
   })
+}
+```
+
+**GET `/api/assets/{key}`** (Serve Private Assets)
+```typescript
+async function getAsset(c: Context) {
+  const userId = c.get('user').id
+  const key = c.req.param('key')
+
+  // Verify user owns this asset (key starts with users/{userId}/)
+  if (!key.startsWith(`users/${userId}/`)) {
+    return c.json({ error: 'Unauthorized' }, 403)
+  }
+
+  // Get from USER_ASSETS bucket
+  const object = await c.env.USER_ASSETS.get(key)
+
+  if (!object) {
+    return new Response('Asset not found', { status: 404 })
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+  headers.set('Cache-Control', 'max-age=86400') // 24 hour cache
+  headers.set('Access-Control-Allow-Origin', 'https://app.miraichat.ai')
+
+  return new Response(object.body, { headers })
 }
 ```
 
@@ -1198,10 +1598,29 @@ async function uploadAsset(c: Context) {
 // apps/stage-web/src/services/live2d.ts
 import { Live2DModel } from 'pixi-live2d-display'
 
-export async function loadLive2DModel(characterId: string) {
-  const modelUrl = `https://assets.miraichat.ai/live2d-models/${characterId}/model.json`
+export async function loadLive2DModel(characterId: string, isDefault: boolean = false) {
+  let modelUrl: string
 
-  const model = await Live2DModel.from(modelUrl)
+  if (isDefault) {
+    // Load default model from PUBLIC_ASSETS (no auth, edge-cached)
+    modelUrl = `https://app.miraichat.ai/assets/live2d/models/hiyori_pro_zh.zip`
+  } else {
+    // Load user's custom model from API Gateway (auth required)
+    const authToken = await getAuthToken()
+    const response = await fetch(`https://api.miraichat.ai/api/characters/${characterId}`, {
+      headers: { Authorization: `Bearer ${authToken}` }
+    })
+    const character = await response.json()
+
+    // User asset URL requires auth
+    modelUrl = `https://api.miraichat.ai/api/assets/${character.live2d_model_key}`
+  }
+
+  const model = await Live2DModel.from(modelUrl, {
+    headers: isDefault ? {} : {
+      Authorization: `Bearer ${await getAuthToken()}`
+    }
+  })
 
   // Sync animations with Inworld emotions
   return {
@@ -1325,34 +1744,45 @@ export class VoiceSession {
 | **Cloudflare Services** | | | |
 | Workers (API Gateway) | 150M requests | $5 base + $0.30/M | **$50** |
 | D1 Database | 5 GB storage | $5 base + $1/GB | **$10** |
-| R2 Storage (Live2D models) | 100 GB stored | $0.015/GB | **$1.50** |
+| R2 Storage (2 buckets) | 100 GB stored | $0.015/GB | **$1.50** |
+| - mirai-public-assets | 50 GB (shared) | | |
+| - mirai-user-assets | 50 GB (user uploads) | | |
 | R2 Bandwidth | 500 GB (→ Workers = FREE) | $0 | **$0** |
 | Durable Objects | 150M requests | $0.15/M | **$22.50** |
 | Containers (Inworld Runtime) | ~720 hours | $5 base + $0.12/hour | **$91.40** |
 | Pages (Frontend hosting) | Unlimited | FREE | **$0** |
 | | | | |
-| **Authentication** | | | |
-| Supabase Auth | <50K MAU | FREE | **$0** |
+| **Authentication & Payments** | | | |
+| Better-Auth | Self-hosted | FREE | **$0** |
+| Polar (Payment Processing) | 5K paying users | 5% + $0.25/txn | **~$125** |
+| (Assumes 20% paid conversion) | | | |
 | | | | |
-| **Total Infrastructure** | | | **$1,675.40/mo** |
+| **Total Infrastructure** | | | **$1,800.40/mo** |
 
-**Per Active User Cost:** $1,675.40 / 5,000 = **$0.34/user/month** or **$0.011/user/day**
+**Per Active User Cost:** $1,800.40 / 5,000 = **$0.36/user/month** or **$0.012/user/day**
+
+**Revenue Estimate (20% paid conversion, avg $14.99/mo):**
+- Paying users: 1,000
+- MRR: $14,990
+- Infrastructure cost: $1,800
+- **Gross margin: ~88%**
 
 ---
 
 ### Cost Scaling Projections
 
-| Monthly Active Users | Cloudflare | Inworld Runtime | Total/Month | Per User |
-|---------------------|------------|-----------------|-------------|----------|
-| 1,000 | $80 | $300 | **$380** | $0.38 |
-| 5,000 | $175 | $1,500 | **$1,675** | $0.34 |
-| 10,000 | $350 | $3,000 | **$3,350** | $0.34 |
-| 50,000 | $1,750 | $15,000 | **$16,750** | $0.34 |
+| Monthly Active Users | Cloudflare | Inworld Runtime | Polar Fees | Total/Month | Per User |
+|---------------------|------------|-----------------|------------|-------------|----------|
+| 1,000 | $80 | $300 | $25 | **$405** | $0.41 |
+| 5,000 | $175 | $1,500 | $125 | **$1,800** | $0.36 |
+| 10,000 | $350 | $3,000 | $250 | **$3,600** | $0.36 |
+| 50,000 | $1,750 | $15,000 | $1,250 | **$18,000** | $0.36 |
 
 **Notes:**
 - Inworld Runtime pricing <$0.01/user/day is estimated (contact sales for Enterprise pricing)
 - Cloudflare Containers pricing based on usage (scales with active sessions)
-- Supabase Auth remains FREE until 50K MAU
+- Better-Auth is FREE (self-hosted on Workers)
+- Polar charges 5% + $0.25 per transaction (industry-standard for payment processing)
 
 ---
 
@@ -1388,15 +1818,29 @@ wrangler d1 execute mirai-production --file=schema.sql
 
 ---
 
-### Step 2: Setup R2 Bucket
+### Step 2: Setup R2 Buckets
 
 ```bash
-# Create R2 bucket for assets
-wrangler r2 bucket create mirai-assets
+# Create PUBLIC_ASSETS bucket (for Static Assets Worker)
+wrangler r2 bucket create mirai-public-assets
+# Note: Public access is handled by the Static Assets Worker, not direct bucket access
 
-# Enable public access for CDN
-wrangler r2 bucket public-access enable mirai-assets
+# Create USER_ASSETS bucket (for API Gateway - private)
+wrangler r2 bucket create mirai-user-assets
+# Note: This bucket remains private, accessed only via API Gateway with auth
+
+# Upload default public assets to mirai-public-assets
+wrangler r2 object put mirai-public-assets/assets/live2d/models/hiyori_pro_zh.zip --file=./public/assets/live2d/models/hiyori_pro_zh.zip
+wrangler r2 object put mirai-public-assets/assets/cjkFonts_allseto_v1.11-ByBdljxl.ttf --file=./public/assets/cjkFonts_allseto_v1.11-ByBdljxl.ttf
+# ... repeat for other large assets
 ```
+
+**Bucket Configuration:**
+
+| Bucket | Access | Binding | Worker | Purpose |
+|--------|--------|---------|--------|---------|
+| `mirai-public-assets` | Public via Worker | `PUBLIC_ASSETS` | Static Assets | Default models, fonts, WASM (>25MB) |
+| `mirai-user-assets` | Private | `USER_ASSETS` | API Gateway | User uploads, avatars, audio |
 
 ---
 
@@ -1417,9 +1861,15 @@ wrangler kv:namespace create "CACHE"
 cd apps/workers/api-gateway
 
 # Configure secrets
-wrangler secret put JWT_SECRET
 wrangler secret put INWORLD_API_KEY
 wrangler secret put INWORLD_WORKSPACE_ID
+wrangler secret put GOOGLE_CLIENT_ID
+wrangler secret put GOOGLE_CLIENT_SECRET
+wrangler secret put DISCORD_CLIENT_ID
+wrangler secret put DISCORD_CLIENT_SECRET
+wrangler secret put POLAR_API_KEY
+wrangler secret put POLAR_ORGANIZATION_ID
+wrangler secret put POLAR_WEBHOOK_SECRET
 
 # Deploy worker
 wrangler deploy
@@ -1461,7 +1911,7 @@ INWORLD_SCENE = { value = "workspaces/abc/scenes/default" }
 
 ---
 
-### Step 6: Deploy Frontend (Cloudflare Pages)
+### Step 6: Deploy Frontend (Cloudflare Pages with Static Assets Worker)
 
 ```bash
 cd apps/stage-web
@@ -1469,9 +1919,15 @@ cd apps/stage-web
 # Build production bundle
 npm run build
 
-# Deploy to Cloudflare Pages
+# Deploy to Cloudflare Pages with Worker
 wrangler pages deploy dist --project-name=miraichat
 ```
+
+**Configure R2 Binding in Cloudflare Dashboard:**
+1. Go to Cloudflare Pages → `miraichat` project → Settings → Functions
+2. Add R2 bucket binding:
+   - Variable name: `PUBLIC_ASSETS`
+   - R2 bucket: `mirai-public-assets`
 
 **Auto-deploy via GitHub:**
 ```bash
@@ -1482,6 +1938,10 @@ wrangler pages deploy dist --project-name=miraichat
 Build command: npm run build
 Build output directory: dist
 Root directory: apps/stage-web
+
+# Add environment variables (for build):
+NODE_ENV=production
+VITE_API_URL=https://api.miraichat.ai
 ```
 
 ---
@@ -1576,13 +2036,16 @@ Root directory: apps/stage-web
 
 ## Next Steps
 
-1. **Contact Inworld Sales** for Enterprise pricing (10K+ users)
-2. **Setup Cloudflare account** (Workers Paid plan)
-3. **Clone Inworld Voice Agent template**
-4. **Implement D1 schema** (character ownership)
-5. **Build MVP frontend** (React + Live2D)
-6. **Deploy to production** (follow deployment guide)
-7. **Launch to 100 beta users** (validate before scaling)
+1. **Setup Cloudflare account** (Workers Paid plan)
+2. **Create Polar account** and configure products/pricing
+3. **Setup OAuth apps** (Google, Discord) and get client credentials
+4. **Deploy Better-Auth** with Polar plugin to API Gateway worker
+5. **Implement D1 schema** (auth tables + character ownership + subscriptions)
+6. **Contact Inworld Sales** for Enterprise pricing (10K+ users)
+7. **Clone Inworld Voice Agent template** and deploy to Container
+8. **Build MVP frontend** (React + Live2D + Better-Auth client)
+9. **Deploy to production** (follow deployment guide)
+10. **Launch to 100 beta users** (validate before scaling)
 
 ---
 
@@ -1591,10 +2054,12 @@ Root directory: apps/stage-web
 - [Inworld Runtime Docs](https://docs.inworld.ai/docs/node/templates/voice-agent)
 - [Inworld Studio REST API](https://platform.inworld.ai/v2/documentation/docs/guides/runtime-character)
 - [Cloudflare Containers Docs](https://developers.cloudflare.com/containers/)
+- [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
 - [Cloudflare D1 Docs](https://developers.cloudflare.com/d1/)
 - [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [Supabase Auth Docs](https://supabase.com/docs/guides/auth)
-- [Better-Auth Docs](https://better-auth.com/)
+- [Better-Auth Docs](https://www.better-auth.com/docs)
+- [Better-Auth Polar Plugin](https://www.better-auth.com/docs/plugins/polar)
+- [Polar Docs](https://polar.sh/docs)
 - [Live2D Cubism SDK](https://www.live2d.com/en/download/cubism-sdk/)
 
 ---

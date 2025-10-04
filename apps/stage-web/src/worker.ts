@@ -5,7 +5,7 @@
 
 export interface Env {
   ASSETS: Fetcher
-  MIRAI_ASSETS: R2Bucket
+  PUBLIC_ASSETS: R2Bucket
 }
 
 export default {
@@ -29,7 +29,7 @@ export default {
     // Check if this is a large asset request - serve from R2
     if (r2AssetPaths.includes(pathname)) {
       const r2Key = pathname.slice(1) // Remove leading slash
-      const object = await env.MIRAI_ASSETS.get(r2Key)
+      const object = await env.PUBLIC_ASSETS.get(r2Key)
 
       if (object === null) {
         return new Response('Asset not found', { status: 404 })
