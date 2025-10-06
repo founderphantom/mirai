@@ -2,49 +2,48 @@
   "name": "@proj-airi/database-schema",
   "version": "0.1.0",
   "type": "module",
-  "description": "Drizzle ORM schema for MiraiChat Cloudflare D1 database",
-  "author": {
-    "name": "Phantom Systems Inc",
-    "email": "hello@phantomsystems.io"
-  },
-  "license": "MIT",
+  "private": true,
+  "description": "Database schema and migrations for AIRI using Drizzle ORM",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
     },
     "./schema": {
       "types": "./dist/schema/index.d.ts",
-      "default": "./dist/schema/index.js"
+      "import": "./dist/schema/index.js"
     },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "default": "./dist/types.js"
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
     }
   },
   "main": "./dist/index.js",
-  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
     "drizzle"
   ],
   "scripts": {
-    "dev": "tsup --watch",
-    "build": "tsup",
+    "build": "tsdown src/index.ts src/schema/index.ts src/client.ts --format esm --dts --clean",
+    "dev": "tsdown src/index.ts src/schema/index.ts src/client.ts --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:push": "drizzle-kit push"
+    "db:drop": "drizzle-kit drop"
   },
   "dependencies": {
     "drizzle-orm": "^0.37.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250112.0",
-    "drizzle-kit": "^0.30.1",
-    "tsup": "^8.3.5",
+    "@cloudflare/workers-types": "^4.20250110.0",
+    "drizzle-kit": "^0.29.1",
+    "tsdown": "^0.15.4",
     "typescript": "~5.9.2"
+  },
+  "peerDependencies": {
+    "@cloudflare/workers-types": "^4.0.0"
   }
 }

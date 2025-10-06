@@ -3,19 +3,25 @@
     "target": "ES2022",
     "module": "ESNext",
     "lib": ["ES2022"],
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "allowJs": true,
+    "moduleResolution": "Bundler",
+    "types": ["@cloudflare/workers-types"],
+
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
     "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
     "declaration": true,
     "declarationMap": true,
+    "sourceMap": true,
+
     "outDir": "./dist",
-    "rootDir": "./src",
-    "types": ["@cloudflare/workers-types"]
+    "rootDir": "./src"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "drizzle"]

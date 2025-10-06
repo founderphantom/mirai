@@ -1,0 +1,10 @@
+dist
+node_modules
+.env
+.env.local
+.wrangler
+.DS_Store
+
+# Drizzle
+drizzle/migrations/*.sql
+!drizzle/migrations/.gitkeep
