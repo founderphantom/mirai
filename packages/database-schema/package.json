@@ -35,11 +35,11 @@
     "db:drop": "drizzle-kit drop"
   },
   "dependencies": {
-    "drizzle-orm": "^0.37.0"
+    "drizzle-orm": "^0.44.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250110.0",
-    "drizzle-kit": "^0.29.1",
+    "drizzle-kit": "^0.31.4",
     "tsdown": "^0.15.4",
     "typescript": "~5.9.2"
   },

@@ -13,9 +13,9 @@
     "@hono/zod-validator": "^0.4.1",
     "@proj-airi/database-schema": "workspace:*",
     "better-auth": "^1.1.7",
-    "drizzle-orm": "^0.40.0",
-    "hono": "^5.1.0",
-    "zod": "^3.24.1"
+    "drizzle-orm": "^0.44.5",
+    "hono": "^4.9.10",
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250326.0",
