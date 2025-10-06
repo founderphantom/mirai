@@ -1,0 +1,26 @@
+{
+  "name": "@proj-airi/api-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.4.1",
+    "@proj-airi/database-schema": "workspace:*",
+    "better-auth": "^1.1.7",
+    "drizzle-orm": "^0.40.0",
+    "hono": "^5.1.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250326.0",
+    "@types/node": "^24.5.2",
+    "typescript": "~5.9.2",
+    "wrangler": "^4.1.0"
+  }
+}

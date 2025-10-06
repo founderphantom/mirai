@@ -1,0 +1,18 @@
+# Local development environment variables
+# Copy this to .dev.vars for local development with wrangler dev
+
+# Better Auth
+BETTER_AUTH_SECRET=your-local-secret-key
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+
+# Polar
+POLAR_ACCESS_TOKEN=your-polar-access-token
+POLAR_ORGANIZATION_ID=your-polar-organization-id
+POLAR_WEBHOOK_SECRET=your-polar-webhook-secret
+
+# Inworld
+INWORLD_API_KEY=your-inworld-api-key
+INWORLD_WORKSPACE_ID=your-inworld-workspace-id

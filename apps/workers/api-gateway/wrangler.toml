@@ -1,0 +1,80 @@
+# Cloudflare Workers Configuration for API Gateway
+name = "mirai-api-gateway"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Account ID (replace with your actual ID)
+# account_id = "your-account-id"
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "mirai-production"
+database_id = "your-d1-database-id"  # Replace with actual database ID
+
+# R2 Bucket Binding - User Assets (Private)
+[[r2_buckets]]
+binding = "USER_ASSETS"
+bucket_name = "mirai-user-assets"
+
+# KV Namespace Binding - Session Cache
+[[kv_namespaces]]
+binding = "CACHE"
+id = "your-kv-namespace-id"  # Replace with actual KV namespace ID
+
+# Durable Objects Bindings
+[[durable_objects.bindings]]
+name = "VOICE_SESSION"
+class_name = "VoiceSession"
+script_name = "mirai-api-gateway"
+
+# Environment Variables (use wrangler secret for sensitive values)
+[vars]
+ENVIRONMENT = "development"
+BETTER_AUTH_URL = "http://localhost:8787"
+
+# For production, use:
+# BETTER_AUTH_URL = "https://api.miraichat.ai"
+
+# Production environment overrides
+[env.production]
+name = "mirai-api-gateway-production"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+BETTER_AUTH_URL = "https://api.miraichat.ai"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "mirai-production"
+database_id = "your-production-d1-database-id"
+
+[[env.production.r2_buckets]]
+binding = "USER_ASSETS"
+bucket_name = "mirai-user-assets"
+
+[[env.production.kv_namespaces]]
+binding = "CACHE"
+id = "your-production-kv-namespace-id"
+
+# Staging environment
+[env.staging]
+name = "mirai-api-gateway-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+BETTER_AUTH_URL = "https://api-staging.miraichat.ai"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "mirai-staging"
+database_id = "your-staging-d1-database-id"
+
+[[env.staging.r2_buckets]]
+binding = "USER_ASSETS"
+bucket_name = "mirai-user-assets-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "CACHE"
+id = "your-staging-kv-namespace-id"
