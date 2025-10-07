@@ -99,7 +99,7 @@ wrangler secret put INWORLD_WORKSPACE_ID
 4. Create OAuth 2.0 credentials
 5. Add authorized redirect URIs:
    - `http://localhost:8787/api/auth/callback/google` (development)
-   - `https://api.miraichat.ai/api/auth/callback/google` (production)
+   - `https://api.miraichat.app/api/auth/callback/google` (production)
 
 #### Discord OAuth
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
@@ -107,7 +107,7 @@ wrangler secret put INWORLD_WORKSPACE_ID
 3. Go to OAuth2 settings
 4. Add redirect URIs:
    - `http://localhost:8787/api/auth/callback/discord` (development)
-   - `https://api.miraichat.ai/api/auth/callback/discord` (production)
+     - `https://api.miraichat.app/api/auth/callback/discord` (production)
 
 ### 7. Polar Setup
 
@@ -164,7 +164,7 @@ wrangler tail --env production
 1. Go to Cloudflare Dashboard → Workers & Pages
 2. Select your worker
 3. Go to Settings → Triggers → Custom Domains
-4. Add domain: `api.miraichat.ai`
+4. Add domain: `api.miraichat.app`
 
 ## Troubleshooting
 

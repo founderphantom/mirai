@@ -185,7 +185,7 @@ export default {
 **Deployment:**
 - Cloudflare Pages with Static Assets Worker
 - Auto-deploy from `main` branch
-- Custom domain: `app.miraichat.ai`
+- Custom domain: `app.miraichat.app`
 - R2 binding: `PUBLIC_ASSETS` → `mirai-public-assets`
 
 ---
@@ -455,7 +455,7 @@ app.use('/api/*', async (c, next) => {
 import { createAuthClient } from '@better-auth/react'
 
 export const authClient = createAuthClient({
-  baseURL: 'https://api.miraichat.ai/api/auth'
+  baseURL: 'https://api.miraichat.app/api/auth'
 })
 
 // Sign in with Google
@@ -709,8 +709,8 @@ async function handleSubscribe(priceId: string) {
   // Create checkout session via Better-Auth Polar plugin
   const checkout = await authClient.polar.createCheckout({
     priceId: priceId,
-    successUrl: 'https://app.miraichat.ai/dashboard?checkout=success',
-    cancelUrl: 'https://app.miraichat.ai/pricing'
+    successUrl: 'https://app.miraichat.app/dashboard?checkout=success',
+    cancelUrl: 'https://app.miraichat.app/pricing'
   })
 
   // Redirect to Polar checkout
@@ -841,7 +841,7 @@ import { authClient } from '../lib/auth'
 async function openCustomerPortal() {
   // Generate Polar customer portal URL via Better-Auth plugin
   const portal = await authClient.polar.getPortalUrl({
-    returnUrl: 'https://app.miraichat.ai/settings'
+    returnUrl: 'https://app.miraichat.app/settings'
   })
 
   // Open in new tab
@@ -897,7 +897,7 @@ async function createCharacter(c: Context) {
   const body = await c.req.json<CreateCharacterRequest>()
 
   // 1. Create character in Inworld via Studio REST API
-  const inworldChar = await fetch('https://studio.inworld.ai/v1/workspaces/{workspace}/characters', {
+  const inworldChar = await fetch('https://studio.inworld.app/v1/workspaces/{workspace}/characters', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${c.env.INWORLD_API_KEY}`,
@@ -1019,7 +1019,7 @@ async function startVoiceSession(c: Context) {
   })
 
   // 4. Store session in D1
-  const websocketUrl = `wss://api.miraichat.ai/api/inworld/ws?sessionId=${voiceSessionId}`
+  const websocketUrl = `wss://api.miraichat.app/api/inworld/ws?sessionId=${voiceSessionId}`
   await c.env.DB.prepare(`
     INSERT INTO voice_sessions (id, conversation_id, user_id, character_id, status, websocket_url)
     VALUES (?, ?, ?, ?, 'active', ?)
@@ -1071,13 +1071,13 @@ async function upgradeToInworldWS(c: Context) {
 
 ### Character Creation via Studio REST API
 
-**Endpoint:** `POST https://studio.inworld.ai/v1/workspaces/{workspace}/characters`
+**Endpoint:** `POST https://studio.inworld.app/v1/workspaces/{workspace}/characters`
 
 **Example Request:**
 ```typescript
 async function createInworldCharacter(personality: PersonalityConfig) {
   const response = await fetch(
-    `https://studio.inworld.ai/v1/workspaces/${INWORLD_WORKSPACE_ID}/characters`,
+    `https://studio.inworld.app/v1/workspaces/${INWORLD_WORKSPACE_ID}/characters`,
     {
       method: 'POST',
       headers: {
@@ -1432,7 +1432,7 @@ Character: "Hey! Want to grab some pizza together?"
 
 ```typescript
 // Add knowledge to character
-await fetch('https://studio.inworld.ai/v1/workspaces/{workspace}/knowledge', {
+await fetch('https://studio.inworld.app/v1/workspaces/{workspace}/knowledge', {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${INWORLD_API_KEY}`,
@@ -1559,7 +1559,7 @@ async function uploadAsset(c: Context) {
 
   return c.json({
     key,
-    url: `https://api.miraichat.ai/api/assets/${key}` // Served via API Gateway (auth required)
+    url: `https://api.miraichat.app/api/assets/${key}` // Served via API Gateway (auth required)
   })
 }
 ```
@@ -1586,7 +1586,7 @@ async function getAsset(c: Context) {
   object.writeHttpMetadata(headers)
   headers.set('etag', object.httpEtag)
   headers.set('Cache-Control', 'max-age=86400') // 24 hour cache
-  headers.set('Access-Control-Allow-Origin', 'https://app.miraichat.ai')
+  headers.set('Access-Control-Allow-Origin', 'https://app.miraichat.app')
 
   return new Response(object.body, { headers })
 }
@@ -1603,17 +1603,17 @@ export async function loadLive2DModel(characterId: string, isDefault: boolean = 
 
   if (isDefault) {
     // Load default model from PUBLIC_ASSETS (no auth, edge-cached)
-    modelUrl = `https://app.miraichat.ai/assets/live2d/models/hiyori_pro_zh.zip`
+    modelUrl = `https://app.miraichat.app/assets/live2d/models/hiyori_pro_zh.zip`
   } else {
     // Load user's custom model from API Gateway (auth required)
     const authToken = await getAuthToken()
-    const response = await fetch(`https://api.miraichat.ai/api/characters/${characterId}`, {
+    const response = await fetch(`https://api.miraichat.app/api/characters/${characterId}`, {
       headers: { Authorization: `Bearer ${authToken}` }
     })
     const character = await response.json()
 
     // User asset URL requires auth
-    modelUrl = `https://api.miraichat.ai/api/assets/${character.live2d_model_key}`
+    modelUrl = `https://api.miraichat.app/api/assets/${character.live2d_model_key}`
   }
 
   const model = await Live2DModel.from(modelUrl, {
@@ -1667,7 +1667,7 @@ export class VoiceSession {
 
     // 3. Connect to WebSocket (→ API Gateway → Container)
     this.ws = new WebSocket(
-      `wss://api.miraichat.ai/api/inworld/ws?sessionId=${sessionId}`
+      `wss://api.miraichat.app/api/inworld/ws?sessionId=${sessionId}`
     )
 
     // 4. Stream audio chunks to server
@@ -1941,7 +1941,7 @@ Root directory: apps/stage-web
 
 # Add environment variables (for build):
 NODE_ENV=production
-VITE_API_URL=https://api.miraichat.ai
+VITE_API_URL=https://api.miraichat.app
 ```
 
 ---
@@ -1950,9 +1950,9 @@ VITE_API_URL=https://api.miraichat.ai
 
 ```bash
 # Add custom domain in Cloudflare dashboard
-# Pages: app.miraichat.ai → stage-web
-# Workers: api.miraichat.ai → api-gateway
-# R2: assets.miraichat.ai → mirai-assets bucket
+# Pages: app.miraichat.app → stage-web
+# Workers: api.miraichat.app → api-gateway
+# R2: assets.miraichat.app → mirai-assets bucket
 ```
 
 ---
