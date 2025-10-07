@@ -21,6 +21,9 @@ import voiceRoutes from './routes/voice'
 import assetRoutes from './routes/assets'
 import webhookRoutes from './routes/webhooks'
 
+// Export Durable Objects
+export { VoiceSession } from './services/voice'
+
 // Create Hono app
 const app = new Hono<HonoEnv>()
 

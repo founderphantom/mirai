@@ -15,6 +15,104 @@ import {
 } from '@proj-airi/database-schema'
 import { eq, and } from 'drizzle-orm'
 
+/**
+ * Session metadata stored in Durable Object state
+ */
+interface SessionMetadata {
+  sessionId: string
+  conversationId: string
+  userId: string
+  characterId: string
+  inworldCharacterId: string
+}
+
+/**
+ * Durable Object for managing WebSocket voice sessions
+ * Handles session state and proxies WebSocket traffic to Inworld Container
+ */
+export class VoiceSession {
+  state: DurableObjectState
+  env: Env
+  private sessionMetadata?: SessionMetadata
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state
+    this.env = env
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+
+    // Handle session initialization
+    if (url.pathname === '/init' && request.method === 'POST') {
+      const metadata = await request.json() as SessionMetadata
+      this.sessionMetadata = metadata
+
+      // Store in Durable Object state for persistence
+      await this.state.storage.put('sessionMetadata', metadata)
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Handle WebSocket upgrade
+    if (url.pathname === '/websocket') {
+      const upgradeHeader = request.headers.get('Upgrade')
+      if (upgradeHeader !== 'websocket') {
+        return new Response('Expected websocket', { status: 400 })
+      }
+
+      // Load session metadata if not in memory
+      if (!this.sessionMetadata) {
+        this.sessionMetadata = await this.state.storage.get('sessionMetadata')
+      }
+
+      if (!this.sessionMetadata) {
+        return new Response('Session not initialized', { status: 400 })
+      }
+
+      const pair = new WebSocketPair()
+      const [client, server] = Object.values(pair)
+
+      this.state.acceptWebSocket(server)
+
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+      })
+    }
+
+    return new Response('Not found', { status: 404 })
+  }
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    // TODO: Forward to Inworld Container when container binding is available
+    // For now, just log the message
+    console.log('Received message from client:', typeof message === 'string' ? message : `Binary data: ${message.byteLength} bytes`)
+
+    // When INWORLD_RUNTIME container binding is added, forward like this:
+    // const containerWs = await this.env.INWORLD_RUNTIME.connect({
+    //   userId: this.sessionMetadata.userId,
+    //   characterId: this.sessionMetadata.inworldCharacterId
+    // })
+    // containerWs.send(message)
+  }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    console.log(`WebSocket closed: code=${code}, reason=${reason}, wasClean=${wasClean}`)
+
+    // Clean up session state if needed
+    if (this.sessionMetadata) {
+      console.log(`Session ${this.sessionMetadata.sessionId} ended`)
+    }
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown) {
+    console.error('WebSocket error:', error)
+  }
+}
+
 export class VoiceSessionService {
   private db
 
@@ -53,12 +151,29 @@ export class VoiceSessionService {
 
     await this.db.insert(conversations).values(newConversation)
 
-    // 3. Create voice session
-    const sessionId = crypto.randomUUID()
-    const websocketUrl = `wss://${this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')}/api/voice/ws?sessionId=${sessionId}`
+    // 3. Create voice session via Durable Object
+    const voiceSessionId = crypto.randomUUID()
+    const durableObjectId = this.env.VOICE_SESSION.idFromName(voiceSessionId)
+    const durableObject = this.env.VOICE_SESSION.get(durableObjectId)
+
+    // Initialize Durable Object with session metadata
+    await durableObject.fetch('https://internal/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: voiceSessionId,
+        conversationId,
+        userId,
+        characterId,
+        inworldCharacterId: character[0].inworldCharacterId,
+      }),
+    })
+
+    // 4. Store session in D1
+    const websocketUrl = `wss://${this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')}/api/inworld/ws?sessionId=${voiceSessionId}`
 
     const newSession: NewVoiceSession = {
-      id: sessionId,
+      id: voiceSessionId,
       conversationId,
       userId,
       characterId,
@@ -70,7 +185,7 @@ export class VoiceSessionService {
     await this.db.insert(voiceSessions).values(newSession)
 
     return {
-      sessionId,
+      sessionId: voiceSessionId,
       conversationId,
       websocketUrl,
       character: character[0],
