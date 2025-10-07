@@ -25,6 +25,10 @@ name = "VOICE_SESSION"
 class_name = "VoiceSession"
 script_name = "mirai-api-gateway"
 
+[[containers]]
+binding = "VOICE_AGENT"
+image = "voice-agent-runtime:latest"
+
 # Environment Variables
 [vars]
 ENVIRONMENT = "production"

@@ -1,0 +1,41 @@
+{
+  "name": "@mirai/voice-agent-container",
+  "version": "1.0.0",
+  "description": "Cloudflare Container for Inworld Runtime Voice Agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "build": "tsc && node build.js",
+    "typecheck": "tsc --noEmit",
+    "container:build": "docker build -t voice-agent-runtime:latest .",
+    "container:build:dev": "docker build --target development -t voice-agent-runtime:dev .",
+    "container:push": "wrangler containers push voice-agent-runtime:latest",
+    "container:deploy": "wrangler containers deploy voice-agent-runtime",
+    "container:run": "docker run -p 4000:4000 --env-file .env voice-agent-runtime:latest",
+    "container:run:dev": "docker run -p 4000:4000 --env-file .env voice-agent-runtime:dev",
+    "container:logs": "wrangler containers logs",
+    "container:list": "wrangler containers list",
+    "test": "vitest",
+    "format": "prettier --write .",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250110.0",
+    "@types/node": "^22.14.0",
+    "esbuild": "^0.24.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.5",
+    "wrangler": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
