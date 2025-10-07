@@ -225,7 +225,7 @@ app.post('/load', async (req, res) => {
     }
 
     // Load the agent (this will initialize the Inworld app if needed)
-    await inworldApp.load(req, res, () => {})
+    await inworldApp.load(req, res)
 
     console.log(`[Load] Character ${characterId} loaded for session ${sessionKey}`)
 

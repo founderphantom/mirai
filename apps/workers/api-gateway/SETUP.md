@@ -115,7 +115,7 @@ wrangler secret put INWORLD_WORKSPACE_ID
 2. Create your organization
 3. Get your Organization Access Token from settings
 4. Create products for your subscription tiers
-5. Configure webhook URL: `https://api.miraichat.ai/api/webhooks/polar`
+   5. Configure webhook URL: `https://api.miraichat.app/api/webhooks/polar`
 
 ### 8. Inworld Setup
 

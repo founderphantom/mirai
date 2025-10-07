@@ -1842,7 +1842,7 @@ Add to your `.env` file:
 ```env
 # Better Auth
 BETTER_AUTH_SECRET=<generated-secret>
-BETTER_AUTH_URL=https://api.miraichat.ai
+BETTER_AUTH_URL=https://api.miraichat.app
 
 # OAuth Providers
 GOOGLE_CLIENT_ID=<your-google-client-id>

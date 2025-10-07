@@ -6,13 +6,26 @@ compatibility_flags = ["nodejs_compat"]
 
 # Worker configuration
 workers_dev = true
-route = "" # Set via Cloudflare dashboard or environment
 
-# Container configuration
+# Container configuration (Durable Object that runs a container)
 [[containers]]
-binding = "VOICE_AGENT"
-image = "voice-agent-runtime:latest"
-max_instances = 10 # Scale up to 10 concurrent container instances
+class_name = "VoiceAgentContainer"
+image = "./Dockerfile"
+max_instances = 10
+
+# Durable Objects bindings
+[[durable_objects.bindings]]
+name = "VOICE_AGENT"
+class_name = "VoiceAgentContainer"
+
+[[durable_objects.bindings]]
+name = "VOICE_SESSION"
+class_name = "VoiceSession"
+
+# Migrations (required for new Durable Objects)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceAgentContainer", "VoiceSession"]
 
 # Environment variables (non-sensitive) - passed to container
 [vars]
@@ -21,10 +34,6 @@ WS_APP_PORT = "4000"
 LOG_LEVEL = "info"
 
 # Environment-specific overrides
-[env.staging.vars]
-NODE_ENV = "staging"
-LOG_LEVEL = "debug"
-
 [env.development.vars]
 NODE_ENV = "development"
 LOG_LEVEL = "debug"
@@ -32,20 +41,3 @@ LOG_LEVEL = "debug"
 # Observability
 [observability]
 enabled = true
-
-# Durable Objects binding (worker-level session state)
-[[durable_objects.bindings]]
-name = "VOICE_SESSION"
-class_name = "VoiceSession"
-script_name = "voice-agent-container"
-
-# Analytics Engine binding (for container metrics)
-[[analytics_engine_datasets]]
-binding = "ANALYTICS"
-
-# Build configuration
-[build]
-command = "yarn build"
-
-[build.upload]
-format = "service-worker"

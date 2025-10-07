@@ -1,213 +1,38 @@
-# Voice Agent Container - Cloudflare Deployment Guide
+# Voice Agent Container - Deployment Guide
 
-This guide provides step-by-step instructions for deploying the Inworld Runtime Voice Agent to Cloudflare Containers for the Mirai MVP.
+**Last Updated:** 2025-10-07
+**Target Platform:** Cloudflare Containers (Durable Objects)
+**Project:** Mirai MVP
+
+---
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Architecture Overview](#architecture-overview)
-3. [Local Development Setup](#local-development-setup)
-4. [Building the Container](#building-the-container)
-5. [Cloudflare Configuration](#cloudflare-configuration)
-6. [Deployment](#deployment)
-7. [Testing](#testing)
-8. [Monitoring & Debugging](#monitoring--debugging)
-9. [Production Considerations](#production-considerations)
-10. [Troubleshooting](#troubleshooting)
+2. [Architecture](#architecture)
+3. [Local Testing](#local-testing)
+4. [Production Deployment](#production-deployment)
+5. [Post-Deployment Setup](#post-deployment-setup)
+6. [Monitoring](#monitoring)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Prerequisites
 
+### Required Accounts
+
+- ✅ **Cloudflare Account** with Workers Paid plan (Containers feature)
+- ✅ **Inworld Platform Account** with API access
+
 ### Required Tools
 
-- **Node.js** 20+ (LTS recommended)
-- **pnpm** 9+ (monorepo package manager)
-- **Docker** 24+ (or Colima/alternative)
-- **Wrangler** 4+ (Cloudflare CLI)
-- **Cloudflare Account** with Workers Paid plan
+- Node.js 20+
+- pnpm 9+
+- Docker 24+ (for local testing only)
+- Wrangler 4+
 
-### Cloudflare Account Setup
-
-1. Sign up for [Cloudflare Workers](https://workers.cloudflare.com/)
-2. Upgrade to Workers Paid plan (required for Containers)
-3. Create API token with Containers permissions:
-   - Go to [API Tokens](https://dash.cloudflare.com/profile/api-tokens)
-   - Create token with "Edit Cloudflare Workers" template
-   - Save token securely
-
-### Inworld Platform Setup
-
-1. Create account at [Inworld Studio](https://studio.inworld.ai/)
-2. Create a workspace
-3. Generate API key from workspace settings
-4. Save API key securely
-
----
-
-## Architecture Overview
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                      End User                             │
-│                 (Browser/Mobile App)                      │
-└──────────────────────────────────────────────────────────┘
-                          │
-                          ↓ HTTPS/WebSocket
-┌──────────────────────────────────────────────────────────┐
-│              Cloudflare Worker (worker.ts)                │
-│  - Authentication & JWT verification                      │
-│  - Session management (KV)                                │
-│  - Request routing & proxying                             │
-│  - Rate limiting                                          │
-│  - Analytics tracking                                     │
-└──────────────────────────────────────────────────────────┘
-                          │
-                          ↓ Container.fetch()
-┌──────────────────────────────────────────────────────────┐
-│         Cloudflare Container (Docker + Node.js)           │
-│  - Express.js HTTP/WebSocket server (port 4000)           │
-│  - Inworld Runtime integration                            │
-│  - STT → LLM → TTS pipeline (GraphBuilder)                │
-│  - Voice session state management                         │
-│  - Scale-to-zero when idle (5min)                         │
-└──────────────────────────────────────────────────────────┘
-                          │
-                          ↓ HTTPS/API
-┌──────────────────────────────────────────────────────────┐
-│                  Inworld Platform                         │
-│  - Speech-to-Text (STT)                                   │
-│  - Large Language Model (LLM)                             │
-│  - Text-to-Speech (TTS)                                   │
-│  - Character management                                   │
-│  - Long-term memory (Enterprise)                          │
-└──────────────────────────────────────────────────────────┘
-```
-
----
-
-## Local Development Setup
-
-### 1. Install Dependencies
-
-From the monorepo root:
-
-```bash
-# Install all workspace dependencies
-pnpm install
-
-# Navigate to voice-agent-template
-cd apps/workers/container/voice-agent-template
-```
-
-### 2. Configure Environment Variables
-
-Copy the example environment file:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set required values:
-
-```env
-# Required
-INWORLD_API_KEY=your_inworld_api_key_here
-WS_APP_PORT=4000
-
-# Optional (development)
-NODE_ENV=development
-LOG_LEVEL=debug
-ALLOWED_ORIGINS=http://localhost:3000
-GRAPH_VISUALIZATION_ENABLED=false
-VAD_MODEL_PATH=./models/silero_vad.onnx
-```
-
-### 3. Test Locally (without Docker)
-
-**Note:** The Inworld Runtime requires native binaries. If you encounter binary errors on WSL/Windows, use Docker instead (see step 4 below).
-
-```bash
-# Install server dependencies
-cd voice_agent/server
-pnpm install
-
-# Rebuild native dependencies (if needed)
-pnpm rebuild @inworld/runtime
-
-# Start server
-pnpm start
-```
-
-Server should start on `http://localhost:4000`
-
-**If you see "Binary not found" errors:** The voice agent uses native binaries that may not work on all platforms. Use Docker for local testing instead (recommended).
-
-**Test endpoints:**
-- Health: `http://localhost:4000/health`
-- Ready: `http://localhost:4000/ready`
-- Metrics: `http://localhost:4000/metrics`
-
-### 4. Test with Docker
-
-Build and run the development container:
-
-```bash
-# From voice-agent-template directory
-pnpm container:build:dev
-pnpm container:run:dev
-```
-
-Container should start on `http://localhost:4000`
-
----
-
-## Building the Container
-
-### Production Build
-
-```bash
-# Build production container image
-pnpm container:build
-
-# Verify image was created
-docker images | grep voice-agent-runtime
-```
-
-**Expected output:**
-```
-voice-agent-runtime   latest   <image_id>   <time>   <size>
-```
-
-### Multi-Platform Build (for deployment)
-
-Cloudflare Containers require `linux/amd64` architecture:
-
-```bash
-# Build for linux/amd64
-docker buildx build \
-  --platform linux/amd64 \
-  -t voice-agent-runtime:latest \
-  -f Dockerfile \
-  .
-```
-
-### Test Production Container Locally
-
-```bash
-pnpm container:run
-```
-
-**Verify:**
-- Container starts without errors
-- Health endpoint responds: `curl http://localhost:4000/health`
-- WebSocket upgrade works
-
----
-
-## Cloudflare Configuration
-
-### 1. Authenticate Wrangler
+### Authentication
 
 ```bash
 # Login to Cloudflare
@@ -217,169 +42,132 @@ wrangler login
 wrangler whoami
 ```
 
-### 2. Configure wrangler.toml
+Ensure you have `containers (write)` permission in your token.
 
-The `wrangler.toml` file is already configured. Review and update:
+---
 
-```toml
-name = "voice-agent-container"
-main = "src/worker.ts"
-compatibility_date = "2025-01-01"
+## Architecture
 
-[[containers]]
-binding = "VOICE_AGENT"
-image = "voice-agent-runtime:latest"
-max_instances = 10
+Cloudflare Containers work as **Durable Objects that run Docker containers**:
+
+```
+src/worker.ts (Cloudflare Worker)
+    ↓
+env.VOICE_AGENT (Durable Object binding)
+    ↓
+VoiceAgentContainer extends Container (Durable Object)
+    ↓
+Runs Docker container from ./Dockerfile
+    ↓
+voice_agent/server/ (Express.js + Inworld Runtime)
 ```
 
-### 3. Secrets Management
+**Key Points:**
+- Container is a Durable Object, not a separate service
+- Wrangler builds the Docker image automatically during deployment
+- Each container instance can handle 100+ concurrent voice sessions
+- Containers scale-to-zero after 5 minutes of inactivity
 
-**Important:** This container does **NOT** need its own secrets. All secrets are managed by the `api-gateway` worker:
+---
 
-- ✅ `INWORLD_API_KEY` - Managed by api-gateway, passed via request headers
-- ✅ `JWT_SECRET` - Managed by api-gateway, authentication happens there
-- ✅ OAuth credentials - Managed by api-gateway
+## Local Testing
 
-**Architecture:**
-```
-api-gateway (manages all secrets)
-    ↓ passes INWORLD_API_KEY via X-Inworld-API-Key header
-voice-agent-container (trusts api-gateway)
-```
+### 1. Set Environment Variables
 
-The voice-agent container receives the Inworld API key from api-gateway via the `X-Inworld-API-Key` request header. This creates a **trust boundary** where:
-- api-gateway handles authentication and secret management
-- voice-agent container trusts validated requests from api-gateway
-
-### 4. Shared Resources (Already Created by api-gateway)
-
-The voice-agent container uses the **same resources** as the api-gateway:
-
-**D1 Database:**
 ```bash
-# Already created by api-gateway setup
-# Database name: mirai-production
-# Contains: users, characters, conversations, voice_sessions
+cd apps/workers/container/voice-agent-template
+
+# Copy example env file
+cp .env.example .env
+
+# Edit .env and set:
+INWORLD_API_KEY=your_api_key_here
+INWORLD_WORKSPACE_ID=your_workspace_id_here
+NODE_ENV=development
+WS_APP_PORT=4000
+LOG_LEVEL=debug
 ```
 
-**R2 Bucket:**
+### 2. Test Container Locally with Docker
+
 ```bash
-# Already created by api-gateway setup
-# Bucket name: mirai-user-assets (for audio recordings)
+# Build and run development container
+pnpm test:local
+
+# This runs:
+# 1. docker build --target development -t voice-agent-test:dev .
+# 2. docker run -p 4000:4000 --env-file .env --rm voice-agent-test:dev
+
+# Test health endpoint
+curl http://localhost:4000/health
 ```
 
-**KV Namespace:**
+### 3. Test Worker Locally
+
 ```bash
-# Already created by api-gateway setup
-# Namespace: SESSION_CACHE (for session state)
-```
+# Start Wrangler dev server (simulates Cloudflare environment)
+pnpm dev
 
-**You only need to update `wrangler.toml` with the existing resource IDs from api-gateway.**
-
-Example:
-```toml
-# Use the SAME IDs as api-gateway
-
-[[d1_databases]]
-binding = "DB"
-database_name = "mirai-production"
-database_id = "abc123..."  # Copy from api-gateway wrangler.toml
-
-[[r2_buckets]]
-binding = "AUDIO_STORAGE"
-bucket_name = "mirai-user-assets"  # Same bucket as api-gateway
-
-[[kv_namespaces]]
-binding = "SESSION_CACHE"
-id = "xyz789..."  # Copy from api-gateway wrangler.toml
+# Note: Container won't actually run locally in dev mode
+# This only tests the Worker code (src/worker.ts)
 ```
 
 ---
 
-## Deployment
+## Production Deployment
 
-### Important: Deployment Architecture
+### Step 1: Set Secrets
 
-The voice-agent container is **NOT deployed as a standalone worker**. It is called by the api-gateway worker.
-
-**Deployment flow:**
-1. Build and push the container image
-2. api-gateway worker references the container via binding
-3. api-gateway routes voice agent requests to the container
-
-```
-Client → api-gateway (authentication) → voice-agent-container
-```
-
-### 1. Build and Push Container
+Secrets are encrypted and not visible in wrangler.toml:
 
 ```bash
-# Build container image
-pnpm container:build
+# Set Inworld API Key
+wrangler secret put INWORLD_API_KEY
+# Paste your API key when prompted
 
-# Push to Cloudflare Container Registry
-pnpm container:push
+# Set Inworld Workspace ID
+wrangler secret put INWORLD_WORKSPACE_ID
+# Paste your workspace ID when prompted
 ```
 
-**Note:** This pushes the container image to Cloudflare's registry where api-gateway can reference it.
-
-### 2. Update api-gateway Configuration
-
-The api-gateway worker needs to be updated to reference this container:
-
-```toml
-# apps/workers/api-gateway/wrangler.toml
-
-[[containers]]
-binding = "VOICE_AGENT"
-image = "voice-agent-runtime:latest"
-max_instances = 10
-```
-
-### 3. Deploy api-gateway
+### Step 2: Type Check
 
 ```bash
-# Navigate to api-gateway
-cd ../../api-gateway
+# Ensure no TypeScript errors
+pnpm build
+```
 
-# Deploy api-gateway (which includes the container binding)
+### Step 3: Deploy
+
+```bash
+# Deploy to production
 pnpm deploy
+
+# Or deploy to staging environment
+pnpm deploy:staging
 ```
 
-**Expected output:**
-```
-✨ Built successfully
-🌍 Published api-gateway to Cloudflare
-   https://api.miraichat.app
-```
+**What happens during deployment:**
 
-### 4. Verify Deployment
+1. ✅ Wrangler bundles Worker code (`src/worker.ts`)
+2. ✅ Wrangler builds Docker image from `./Dockerfile`
+3. ✅ Uploads Worker + Container image to Cloudflare
+4. ✅ Creates Durable Objects:
+   - `VoiceAgentContainer` (Container Durable Object)
+   - `VoiceSession` (Session state management)
+5. ✅ Applies migrations (first deployment only)
+6. ✅ Deploys to `https://voice-agent-container.<your-subdomain>.workers.dev`
+
+### Step 4: Verify Deployment
 
 ```bash
-# List containers
-wrangler containers list
-
-# Check container images
-wrangler containers images list
-
-# Expected output:
-# IMAGE                          TAG     SIZE      UPDATED
-# voice-agent-runtime            latest  150MB     2025-01-06
-```
-
-### 5. Test Deployed Container
-
-**Note:** The container is accessed via api-gateway, not directly.
-
-```bash
-# Test via api-gateway endpoint
-curl https://api.miraichat.app/api/voice-agent/health \
-  -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
+# Test health endpoint
+curl https://voice-agent-container.<your-subdomain>.workers.dev/health
 
 # Expected response:
 # {
 #   "status": "healthy",
-#   "timestamp": "2025-01-06T...",
+#   "timestamp": "2025-10-07T...",
 #   "environment": "production",
 #   "container": "voice-agent-runtime"
 # }
@@ -387,260 +175,242 @@ curl https://api.miraichat.app/api/voice-agent/health \
 
 ---
 
-## Testing
+## Post-Deployment Setup
 
-### Unit Tests (coming soon)
+### 1. Configure API Gateway
+
+The voice agent should only be called by your API Gateway, not directly by clients.
 
 ```bash
-pnpm test
+# In apps/workers/api-gateway
+cd ../api-gateway
+
+# Set voice agent URL as a secret
+wrangler secret put VOICE_AGENT_URL
+
+# Enter: https://voice-agent-container.<your-subdomain>.workers.dev
 ```
 
-### Integration Tests
+### 2. Update API Gateway Code
 
-Test the full flow from API Gateway → Container → Inworld:
+Ensure your API Gateway forwards requests with required headers:
 
-1. **Create Session:**
-   ```bash
-   curl -X POST https://api.miraichat.app/api/voice-agent/create-session \
-     -H "Authorization: Bearer <JWT_TOKEN>" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "characterId": "character-uuid",
-       "agentConfig": {
-         "name": "TestAgent",
-         "description": "Test description",
-         "motivation": "Help users"
-       }
-     }'
-   ```
+```typescript
+// apps/workers/api-gateway/src/routes/voice.ts
+const response = await fetch(
+  `${env.VOICE_AGENT_URL}/session`,
+  {
+    headers: {
+      'X-User-ID': user.id,
+      'X-Inworld-API-Key': env.INWORLD_API_KEY,
+    }
+  }
+)
+```
 
-2. **Connect WebSocket:**
-   ```javascript
-   // Note: WebSocket connection goes through api-gateway
-   const ws = new WebSocket(
-     `wss://api.miraichat.app/api/voice-agent/session?key=<session_key>`
-   )
+### 3. Test End-to-End
 
-   ws.onopen = () => {
-     console.log('Connected!')
-   }
-
-   ws.onmessage = (event) => {
-     console.log('Message:', JSON.parse(event.data))
-   }
-   ```
-
-3. **Send Audio/Text:**
-   ```javascript
-   // Send text message
-   ws.send(JSON.stringify({
-     type: 'TEXT',
-     text: 'Hello, agent!',
-     interactionId: crypto.randomUUID()
-   }))
-
-   // Send audio chunk
-   ws.send(JSON.stringify({
-     type: 'AUDIO',
-     audio: base64AudioData,
-     state: 'ACTIVE'
-   }))
-   ```
+```bash
+# From frontend or API client
+curl -X POST https://api.miraichat.app/api/voice/session/start \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"characterId": "char-123"}'
+```
 
 ---
 
-## Monitoring & Debugging
+## Monitoring
 
 ### View Logs
 
 ```bash
-# Real-time logs
-wrangler tail
+# Stream real-time logs
+wrangler tail voice-agent-container
 
-# Container-specific logs
-pnpm container:logs
-
-# Filter logs
-wrangler tail --grep "ERROR"
-wrangler tail --grep "session"
+# Filter by status
+wrangler tail voice-agent-container --status ok
+wrangler tail voice-agent-container --status error
 ```
 
-### Cloudflare Dashboard
-
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. Navigate to Workers & Pages
-3. Select `voice-agent-container`
-4. View:
-   - Real-time requests
-   - Error rates
-   - CPU/Memory usage
-   - Container instances
-
-### Analytics
-
-Query analytics data:
+### Check Durable Objects
 
 ```bash
-# Get analytics for last 24 hours
-wrangler analytics
+# List Durable Objects
+wrangler d1 execute <DATABASE_NAME> --command \
+  "SELECT * FROM _cf_durable_objects LIMIT 10"
 ```
 
-### Debugging Containers
+### Metrics Dashboard
 
-```bash
-# Check container status
-wrangler containers list
-
-# View container instances
-wrangler containers instances list voice-agent-container
-
-# Restart container
-wrangler containers restart voice-agent-container
-```
-
----
-
-## Production Considerations
-
-### 1. Scaling Configuration
-
-Update `wrangler.toml` for production load:
-
-```toml
-[[containers]]
-binding = "VOICE_AGENT"
-image = "voice-agent-runtime:latest"
-max_instances = 50  # Increase for production
-cpu_limit = 2       # CPUs per instance
-memory_limit = 4096 # MB per instance
-```
-
-### 2. Rate Limiting
-
-Implement rate limiting in the worker:
-
-```typescript
-// In worker.ts
-const RATE_LIMIT_MAX = 100 // requests per minute
-const rateLimiter = new RateLimiter(env.SESSION_CACHE)
-
-if (await rateLimiter.isRateLimited(userId)) {
-  return new Response('Rate limit exceeded', { status: 429 })
-}
-```
-
-### 3. Cost Optimization
-
-- **Reduce `sleepAfter`** to minimize idle container costs
-- **Enable `max_instances` cap** to prevent runaway costs
-- **Use KV caching** for frequently accessed data
-- **Monitor usage** via Cloudflare Analytics
-
-**Estimated Costs (5K MAU):**
-- Workers: ~$50/month
-- Containers: ~$91/month
-- D1: ~$10/month
-- R2: ~$1.50/month
-- KV: ~$5/month
-- **Total: ~$157.50/month**
-
-### 4. Security Hardening
-
-- **Enable CORS restrictions** (set `ALLOWED_ORIGINS` in production)
-- **Validate JWT tokens** on all protected routes
-- **Use strong secrets** (32+ characters, random)
-- **Enable rate limiting** to prevent abuse
-- **Sanitize user inputs** in container
-- **Review security advisors** regularly
-
-### 5. Monitoring & Alerts
-
-Set up alerts for:
-- Container errors > 5%
-- Response time > 2 seconds
-- Memory usage > 90%
-- WebSocket disconnect rate > 10%
-
-**Tools:**
-- Cloudflare Analytics
-- Sentry (error tracking)
-- Datadog (metrics)
-- New Relic (APM)
+View metrics in Cloudflare Dashboard:
+1. Go to Workers & Pages
+2. Select `voice-agent-container`
+3. View Analytics tab
 
 ---
 
 ## Troubleshooting
 
-### Container Won't Start
+### Container Build Fails
 
-**Symptom:** Container fails to initialize
+**Error:** `Failed to build Docker image`
 
-**Solutions:**
-1. Check logs: `wrangler tail`
-2. Verify `INWORLD_API_KEY` is set correctly
-3. Ensure VAD model exists at `./models/silero_vad.onnx`
-4. Check Docker build logs for errors
+**Solution:**
+```bash
+# Test Docker build locally
+docker build -t test-build .
 
-### WebSocket Connection Refused
+# Check Dockerfile syntax
+# Ensure COPY paths are correct
+# Verify base image exists
+```
 
-**Symptom:** Client cannot connect to WebSocket
+### Deployment Fails with Migration Error
 
-**Solutions:**
-1. Verify session exists in KV cache
-2. Check session key is correct
-3. Ensure WebSocket path is `/session?key=<key>`
-4. Verify CORS headers allow WebSocket upgrade
+**Error:** `Durable Object migration failed`
 
-### High Latency
+**Solution:**
+```bash
+# Check wrangler.toml migrations section
+# Ensure class names match exported classes:
 
-**Symptom:** Slow response times (>2 seconds)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceAgentContainer", "VoiceSession"]
+```
 
-**Solutions:**
-1. Check Inworld API latency
-2. Increase container CPU/memory
-3. Reduce `sleepAfter` to keep containers warm
-4. Enable KV caching for frequently accessed data
+### Health Check Fails After Deployment
 
-### Container Out of Memory
+**Error:** 403 or "Invalid request"
 
-**Symptom:** Container crashes with OOM error
+**Solution:**
+The Worker expects `X-User-ID` and `X-Inworld-API-Key` headers. For health checks, modify `src/worker.ts`:
 
-**Solutions:**
-1. Increase `memory_limit` in `wrangler.toml`
-2. Optimize audio buffer handling
-3. Implement stream processing for large audio
-4. Review memory leaks in application code
+```typescript
+// Bypass auth for health check
+if (path === '/health') {
+  return new Response(JSON.stringify({ status: 'healthy' }), {
+    headers: { 'Content-Type': 'application/json' }
+  })
+}
+```
 
-### Database Errors
+### Container Not Starting
 
-**Symptom:** D1 query failures
+**Error:** Container times out or doesn't respond
 
-**Solutions:**
-1. Verify D1 binding is correct in `wrangler.toml`
-2. Check database migrations are applied
-3. Ensure database exists: `wrangler d1 list`
-4. Review query syntax and bindings
+**Check:**
+1. Server listens on correct port (4000)
+2. HEALTHCHECK in Dockerfile works
+3. Container logs: `wrangler tail`
+4. Environment variables are set correctly
 
 ---
 
-## Additional Resources
+## Environment Configuration
+
+### wrangler.toml Structure
+
+```toml
+name = "voice-agent-container"
+main = "src/worker.ts"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# Container configuration
+[[containers]]
+class_name = "VoiceAgentContainer"
+image = "./Dockerfile"
+max_instances = 10
+
+# Durable Object bindings
+[[durable_objects.bindings]]
+name = "VOICE_AGENT"
+class_name = "VoiceAgentContainer"
+
+# Migrations (first deployment)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceAgentContainer", "VoiceSession"]
+
+# Non-sensitive environment variables
+[vars]
+NODE_ENV = "production"
+WS_APP_PORT = "4000"
+LOG_LEVEL = "info"
+```
+
+### Secrets (never commit these!)
+
+Set via `wrangler secret put`:
+- `INWORLD_API_KEY`
+- `INWORLD_WORKSPACE_ID`
+
+---
+
+## Deployment Checklist
+
+- [ ] Cloudflare account with Workers Paid plan
+- [ ] Inworld Platform account with API key
+- [ ] Wrangler authenticated (`wrangler login`)
+- [ ] Secrets set (`wrangler secret put`)
+- [ ] TypeScript compiles (`pnpm build`)
+- [ ] Docker build works locally (`pnpm test:local`)
+- [ ] Deployed successfully (`pnpm deploy`)
+- [ ] Health check passes
+- [ ] API Gateway configured with voice agent URL
+- [ ] End-to-end test passes
+
+---
+
+## Available Commands
+
+```bash
+# Development
+pnpm dev              # Local development with Wrangler
+pnpm test:local       # Test container with Docker locally
+
+# Type checking
+pnpm build            # Compile TypeScript
+pnpm typecheck        # Type check without output
+
+# Deployment
+pnpm deploy           # Deploy to production
+pnpm deploy:staging   # Deploy to staging
+
+# Code quality
+pnpm format           # Format code with Prettier
+pnpm lint             # Lint code
+pnpm test             # Run tests
+```
+
+---
+
+## Next Steps
+
+1. **Deploy API Gateway** - Configure to call this voice agent
+2. **Deploy Frontend** - Connect to API Gateway
+3. **Set up monitoring** - Configure alerts for errors
+4. **Load testing** - Test with multiple concurrent sessions
+5. **Add custom domain** - Point custom domain to Worker
+
+---
+
+## References
 
 - [Cloudflare Containers Docs](https://developers.cloudflare.com/containers/)
-- [Wrangler CLI Reference](https://developers.cloudflare.com/workers/wrangler/)
 - [Inworld Runtime Docs](https://docs.inworld.ai/docs/node/templates/voice-agent)
-- [Mirai MVP Architecture](../../product-documentation/mvp/mvp-cloudflare-inworld-architecture.md)
+- [Durable Objects Docs](https://developers.cloudflare.com/durable-objects/)
+- [Wrangler CLI Reference](https://developers.cloudflare.com/workers/wrangler/)
 
 ---
 
-## Support
+**Questions or Issues?**
 
-For issues and questions:
-- **Cloudflare:** [Community Discord](https://discord.cloudflare.com)
-- **Inworld:** [Documentation](https://docs.inworld.ai) | [Support](https://inworld.ai/support)
-- **Mirai Team:** Internal Slack channel
+- Internal docs: `apps/workers/container/voice-agent-template/INTEGRATIONS.md`
+- Architecture: `product-documentation/mvp/mvp-cloudflare-inworld-architecture.md`
+- Setup guide: `apps/workers/container/voice-agent-template/SETUP.md`
 
----
-
-**Document Version:** 1.0
-**Last Updated:** 2025-01-06
-**Author:** Claude Code for Mirai MVP
+**Maintained by:** Phantom Systems Inc
+**Last Updated:** 2025-10-07

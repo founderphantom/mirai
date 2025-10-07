@@ -4,9 +4,8 @@
   "private": true,
   "description": "A collection of 3D scene components that used by Project AIRI",
   "author": {
-    "name": "Moeru AI Project AIRI Team",
-    "email": "airi@moeru.ai",
-    "url": "https://github.com/moeru-ai"
+    "name": "MirAI",
+    "email": "founder@phantomsys.dev"
   },
   "license": "MIT",
   "repository": {

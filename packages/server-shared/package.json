@@ -4,9 +4,8 @@
   "version": "0.7.2-beta.3",
   "description": "Server shared types, utilities for AIRI server components and runtimes",
   "author": {
-    "name": "Moeru AI Project AIRI Team",
-    "email": "airi@moeru.ai",
-    "url": "https://github.com/moeru-ai"
+    "name": "MirAI",
+    "email": "founder@phantomsys.dev"
   },
   "license": "MIT",
   "repository": {

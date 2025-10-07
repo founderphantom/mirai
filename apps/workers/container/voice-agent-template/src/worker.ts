@@ -12,16 +12,17 @@
  *   - Container receives INWORLD_API_KEY via X-Inworld-API-Key header
  */
 
-import { Container, getContainer } from '@cloudflare/containers'
+import { Container } from '@cloudflare/containers'
 
 /**
  * Voice Agent Container class
  * Configures container behavior for Cloudflare Containers
+ *
+ * Note: maxInstances is configured in wrangler.toml, not here
  */
 export class VoiceAgentContainer extends Container {
-  defaultPort = 4000 // Container listening port
-  sleepAfter = '5m' // Scale to zero after 5 minutes of inactivity
-  maxInstances = 10 // Maximum concurrent instances
+  override defaultPort = 4000 // Container listening port
+  override sleepAfter = '5m' // Scale to zero after 5 minutes of inactivity
 }
 
 /**
@@ -54,7 +55,7 @@ export interface Env {
  *   - Passing authenticated user ID via X-User-ID header
  */
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname
 
@@ -89,8 +90,7 @@ export default {
 
       // All requests are proxied to container
       // Container will extract X-Inworld-API-Key and X-User-ID headers
-      const container = getContainer(env.VOICE_AGENT)
-      return container.fetch(request)
+      return env.VOICE_AGENT.fetch(request)
     } catch (error) {
       console.error('Worker error:', error)
       return new Response(JSON.stringify({
@@ -109,12 +109,10 @@ export default {
  */
 export class VoiceSession implements DurableObject {
   private state: DurableObjectState
-  private env: Env
   private sessionData: any
 
-  constructor(state: DurableObjectState, env: Env) {
+  constructor(state: DurableObjectState, _env: Env) {
     this.state = state
-    this.env = env
   }
 
   async fetch(request: Request): Promise<Response> {

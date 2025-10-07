@@ -3720,8 +3720,8 @@ POLAR_ENTERPRISE_PRODUCT_ID=prod_zzzzzzzzzzzzz
 
 # URLs
 POLAR_SERVER=production # or 'sandbox' for testing
-APP_URL=https://app.miraichat.ai
-API_URL=https://api.miraichat.ai
+APP_URL=https://app.miraichat.app
+API_URL=https://api.miraichat.app
 ```
 
 #### 2. Database Schema Extensions

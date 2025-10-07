@@ -283,7 +283,7 @@ Check that your `BETTER_AUTH_SECRET` is set correctly and matches between deploy
 
 Ensure your OAuth redirect URIs are correctly configured in Google/Discord developer consoles:
 - Development: `http://localhost:8787/api/auth/callback/google`
-- Production: `https://api.miraichat.ai/api/auth/callback/google`
+- Production: `https://api.miraichat.app/api/auth/callback/google`
 
 ### Webhook not receiving events
 

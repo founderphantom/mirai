@@ -6,9 +6,8 @@
   "packageManager": "pnpm@10.17.1",
   "description": "LLM powered virtual character",
   "author": {
-    "name": "Moeru AI Project AIRI Team",
-    "email": "airi@moeru.ai",
-    "url": "https://github.com/moeru-ai"
+    "name": "MirAI",
+    "email": "founder@phantomsys.dev"
   },
   "license": "MIT",
   "scripts": {
