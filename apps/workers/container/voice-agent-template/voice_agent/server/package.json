@@ -1,5 +1,6 @@
 {
   "name": "server",
+  "type": "commonjs",
   "main": "index.js",
   "license": "SEE LICENSE IN LICENSE.md and LICENSE-CPP-BINARIES.md",
   "scripts": {

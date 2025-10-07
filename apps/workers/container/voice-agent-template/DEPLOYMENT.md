@@ -125,16 +125,23 @@ VAD_MODEL_PATH=./models/silero_vad.onnx
 
 ### 3. Test Locally (without Docker)
 
+**Note:** The Inworld Runtime requires native binaries. If you encounter binary errors on WSL/Windows, use Docker instead (see step 4 below).
+
 ```bash
 # Install server dependencies
 cd voice_agent/server
-yarn install
+pnpm install
+
+# Rebuild native dependencies (if needed)
+pnpm rebuild @inworld/runtime
 
 # Start server
-yarn start
+pnpm start
 ```
 
 Server should start on `http://localhost:4000`
+
+**If you see "Binary not found" errors:** The voice agent uses native binaries that may not work on all platforms. Use Docker for local testing instead (recommended).
 
 **Test endpoints:**
 - Health: `http://localhost:4000/health`
@@ -225,50 +232,84 @@ image = "voice-agent-runtime:latest"
 max_instances = 10
 ```
 
-### 3. Set Secrets
+### 3. Secrets Management
 
-**Required secrets** (never commit to git):
+**Important:** This container does **NOT** need its own secrets. All secrets are managed by the `api-gateway` worker:
 
-```bash
-# Inworld API key
-wrangler secret put INWORLD_API_KEY
-# Enter your Inworld API key when prompted
+- ✅ `INWORLD_API_KEY` - Managed by api-gateway, passed via request headers
+- ✅ `JWT_SECRET` - Managed by api-gateway, authentication happens there
+- ✅ OAuth credentials - Managed by api-gateway
 
-# JWT secret (generate with: openssl rand -hex 32)
-wrangler secret put JWT_SECRET
-# Enter a random secure string
+**Architecture:**
+```
+api-gateway (manages all secrets)
+    ↓ passes INWORLD_API_KEY via X-Inworld-API-Key header
+voice-agent-container (trusts api-gateway)
 ```
 
-### 4. Create D1 Database
+The voice-agent container receives the Inworld API key from api-gateway via the `X-Inworld-API-Key` request header. This creates a **trust boundary** where:
+- api-gateway handles authentication and secret management
+- voice-agent container trusts validated requests from api-gateway
 
+### 4. Shared Resources (Already Created by api-gateway)
+
+The voice-agent container uses the **same resources** as the api-gateway:
+
+**D1 Database:**
 ```bash
-# Create database
-wrangler d1 create mirai-production
-
-# Note the database_id from output
-# Update wrangler.toml with database_id
+# Already created by api-gateway setup
+# Database name: mirai-production
+# Contains: users, characters, conversations, voice_sessions
 ```
 
-### 5. Create R2 Bucket
-
+**R2 Bucket:**
 ```bash
-# Create bucket for voice recordings
-wrangler r2 bucket create mirai-voice-recordings
+# Already created by api-gateway setup
+# Bucket name: mirai-user-assets (for audio recordings)
 ```
 
-### 6. Create KV Namespace
-
+**KV Namespace:**
 ```bash
-# Create KV namespace for sessions
-wrangler kv:namespace create SESSION_CACHE
+# Already created by api-gateway setup
+# Namespace: SESSION_CACHE (for session state)
+```
 
-# Note the namespace ID
-# Update wrangler.toml with namespace id
+**You only need to update `wrangler.toml` with the existing resource IDs from api-gateway.**
+
+Example:
+```toml
+# Use the SAME IDs as api-gateway
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mirai-production"
+database_id = "abc123..."  # Copy from api-gateway wrangler.toml
+
+[[r2_buckets]]
+binding = "AUDIO_STORAGE"
+bucket_name = "mirai-user-assets"  # Same bucket as api-gateway
+
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "xyz789..."  # Copy from api-gateway wrangler.toml
 ```
 
 ---
 
 ## Deployment
+
+### Important: Deployment Architecture
+
+The voice-agent container is **NOT deployed as a standalone worker**. It is called by the api-gateway worker.
+
+**Deployment flow:**
+1. Build and push the container image
+2. api-gateway worker references the container via binding
+3. api-gateway routes voice agent requests to the container
+
+```
+Client → api-gateway (authentication) → voice-agent-container
+```
 
 ### 1. Build and Push Container
 
@@ -280,46 +321,67 @@ pnpm container:build
 pnpm container:push
 ```
 
-**Note:** Wrangler will automatically push the container to Cloudflare's registry.
+**Note:** This pushes the container image to Cloudflare's registry where api-gateway can reference it.
 
-### 2. Deploy Worker
+### 2. Update api-gateway Configuration
+
+The api-gateway worker needs to be updated to reference this container:
+
+```toml
+# apps/workers/api-gateway/wrangler.toml
+
+[[containers]]
+binding = "VOICE_AGENT"
+image = "voice-agent-runtime:latest"
+max_instances = 10
+```
+
+### 3. Deploy api-gateway
 
 ```bash
-# Deploy to production
-pnpm deploy
+# Navigate to api-gateway
+cd ../../api-gateway
 
-# Or deploy to staging first
-pnpm deploy:staging
+# Deploy api-gateway (which includes the container binding)
+pnpm deploy
 ```
 
 **Expected output:**
 ```
 ✨ Built successfully
-🌍 Published voice-agent-container to Cloudflare
-   https://voice-agent-container.<your-subdomain>.workers.dev
+🌍 Published api-gateway to Cloudflare
+   https://api.miraichat.app
 ```
 
-### 3. Verify Deployment
+### 4. Verify Deployment
 
 ```bash
 # List containers
-pnpm container:list
+wrangler containers list
 
 # Check container images
 wrangler containers images list
+
+# Expected output:
+# IMAGE                          TAG     SIZE      UPDATED
+# voice-agent-runtime            latest  150MB     2025-01-06
 ```
 
-### 4. Test Deployed Container
+### 5. Test Deployed Container
+
+**Note:** The container is accessed via api-gateway, not directly.
 
 ```bash
-# Health check
-curl https://voice-agent-container.<your-subdomain>.workers.dev/health
+# Test via api-gateway endpoint
+curl https://api.miraichat.app/api/voice-agent/health \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
 
 # Expected response:
 # {
 #   "status": "healthy",
 #   "timestamp": "2025-01-06T...",
-#   "environment": "production"
+#   "environment": "production",
+#   "container": "voice-agent-runtime"
 # }
 ```
 
@@ -354,8 +416,9 @@ Test the full flow from API Gateway → Container → Inworld:
 
 2. **Connect WebSocket:**
    ```javascript
+   // Note: WebSocket connection goes through api-gateway
    const ws = new WebSocket(
-     `wss://voice-agent-container.<subdomain>.workers.dev/session?key=<session_key>`
+     `wss://api.miraichat.app/api/voice-agent/session?key=<session_key>`
    )
 
    ws.onopen = () => {

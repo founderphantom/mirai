@@ -2,7 +2,7 @@ import { GraphOutputStream, GraphTypes } from '@inworld/runtime/graph';
 import { v4 } from 'uuid';
 import { RawData } from 'ws';
 
-import { INPUT_SAMPLE_RATE } from '../../constants';
+import { INPUT_SAMPLE_RATE } from '../constants';
 import {
   AudioInput,
   ChatMessage,

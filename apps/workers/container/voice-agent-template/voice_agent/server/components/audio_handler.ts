@@ -5,7 +5,7 @@ import {
   PAUSE_DURATION_THRESHOLD_MS,
   PRE_ROLL_MS,
   SPEECH_THRESHOLD,
-} from '../../constants';
+} from '../constants';
 
 export interface AudioHandlerCallbacks {
   onNewInteractionRequested: () => string;

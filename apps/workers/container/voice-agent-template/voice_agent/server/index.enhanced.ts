@@ -22,7 +22,7 @@ const { query } = require('express-validator')
 
 import { body } from 'express-validator'
 
-import { WS_APP_PORT } from '../constants'
+import { WS_APP_PORT } from './constants'
 import { InworldApp } from './components/app'
 import { MessageHandler } from './components/message_handler'
 

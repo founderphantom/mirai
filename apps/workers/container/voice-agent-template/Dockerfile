@@ -1,71 +1,77 @@
 # Multi-stage build for Inworld Runtime Voice Agent on Cloudflare Containers
 # Production-optimized Node.js container for voice agent template
 
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 
-# Install dependencies required for native modules
-RUN apk add --no-cache \
+# Install dependencies required for native modules and pnpm
+RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
-    git
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable \
+    && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
 # Copy package files
-COPY voice_agent/server/package.json voice_agent/server/yarn.lock ./
+COPY voice_agent/server/package.json ./
 
-# Install dependencies
-RUN yarn install --frozen-lockfile --production=false
+# Install dependencies and manually run postinstall for @inworld/runtime
+RUN pnpm install && \
+    cd node_modules/@inworld/runtime && \
+    node ./scripts/binaries-unzip.cjs
 
 # Development stage (for local testing)
 FROM base AS development
 
 WORKDIR /app
 
-# Copy server source
+# Copy server source (includes local constants.ts)
 COPY voice_agent/server/ ./
-COPY voice_agent/constants.ts ./constants.ts
 COPY models/ ./models/
 
 # Expose port
 EXPOSE 4000
 
-CMD ["yarn", "start"]
+CMD ["pnpm", "start"]
 
 # Production build stage
 FROM base AS build
 
 WORKDIR /app
 
-# Copy server source
+# Copy server source (includes local constants.ts)
 COPY voice_agent/server/ ./
-COPY voice_agent/constants.ts ./constants.ts
 COPY models/ ./models/
 
 # Build TypeScript
-RUN yarn build
+RUN pnpm build
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 
-# Install only runtime dependencies
-RUN apk add --no-cache \
-    tini
+# Install only runtime dependencies and pnpm
+RUN apt-get update && apt-get install -y \
+    tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable \
+    && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
 # Copy package files for production install
-COPY voice_agent/server/package.json voice_agent/server/yarn.lock ./
+COPY voice_agent/server/package.json ./
 
-# Install only production dependencies
-RUN yarn install --frozen-lockfile --production=true && \
-    yarn cache clean
+# Install only production dependencies and manually run postinstall for @inworld/runtime
+RUN pnpm install --prod && \
+    cd node_modules/@inworld/runtime && \
+    node ./scripts/binaries-unzip.cjs
 
 # Copy built application from build stage
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/models ./models
-COPY --from=build /app/constants.ts ./constants.ts
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \

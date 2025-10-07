@@ -13,7 +13,7 @@ import {
 import * as os from 'os';
 import * as path from 'path';
 
-import { TEXT_CONFIG, TTS_SAMPLE_RATE } from '../../constants';
+import { TEXT_CONFIG, TTS_SAMPLE_RATE } from '../constants';
 import {
   AudioInput,
   CreateGraphPropsInterface,

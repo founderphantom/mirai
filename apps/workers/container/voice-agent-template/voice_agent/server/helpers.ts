@@ -6,7 +6,7 @@ import {
   DEFAULT_TTS_MODEL_ID,
   DEFAULT_VAD_MODEL_PATH,
   DEFAULT_VOICE_ID,
-} from '../constants';
+} from './constants';
 
 export const parseEnvironmentVariables = () => {
   if (!process.env.INWORLD_API_KEY) {

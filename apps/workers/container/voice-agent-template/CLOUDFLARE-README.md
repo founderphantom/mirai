@@ -104,10 +104,10 @@ pnpm deploy
 ```bash
 # Install server dependencies
 cd voice_agent/server
-yarn install
+pnpm install
 
 # Start development server
-yarn start
+pnpm start
 
 # Server runs on http://localhost:4000
 ```
@@ -204,8 +204,9 @@ pnpm deploy:staging
 # Check deployment
 wrangler containers list
 
-# Test health endpoint
-curl https://voice-agent-container.<your-subdomain>.workers.dev/health
+# Test health endpoint (via api-gateway)
+curl https://api.miraichat.app/api/voice-agent/health \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
 ```
 
 ## 🧪 Testing
@@ -227,7 +228,8 @@ curl -X POST https://api.miraichat.app/api/voice-agent/create-session \
   }'
 
 # 2. Connect WebSocket (save sessionKey from response)
-wscat -c "wss://voice-agent-container.<subdomain>.workers.dev/session?key=<sessionKey>"
+# Note: WebSocket connection goes through api-gateway
+wscat -c "wss://api.miraichat.app/api/voice-agent/session?key=<sessionKey>"
 
 # 3. Send test message
 > {"type":"TEXT","text":"Hello!","interactionId":"test-123"}
