@@ -151,29 +151,31 @@ export class VoiceSessionService {
 
     await this.db.insert(conversations).values(newConversation)
 
-    // 3. Create voice session via Durable Object
-    const voiceSessionId = crypto.randomUUID()
-    const durableObjectId = this.env.VOICE_SESSION.idFromName(voiceSessionId)
-    const durableObject = this.env.VOICE_SESSION.get(durableObjectId)
+    // 3. Create session key and metadata
+    const sessionKey = crypto.randomUUID()
+    const sessionData = {
+      sessionId: sessionKey,
+      conversationId,
+      userId,
+      characterId,
+      inworldCharacterId: character[0].inworldCharacterId,
+      agentConfig: character[0].personalityConfig,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 300000, // 5 minutes
+    }
 
-    // Initialize Durable Object with session metadata
-    await durableObject.fetch('https://internal/init', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: voiceSessionId,
-        conversationId,
-        userId,
-        characterId,
-        inworldCharacterId: character[0].inworldCharacterId,
-      }),
-    })
+    // 4. Store session in KV cache (5 min TTL)
+    await this.env.SESSION_CACHE.put(
+      `session:${sessionKey}`,
+      JSON.stringify(sessionData),
+      { expirationTtl: 300 },
+    )
 
-    // 4. Store session in D1
-    const websocketUrl = `wss://${this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')}/api/inworld/ws?sessionId=${voiceSessionId}`
+    // 5. Store session in D1
+    const websocketUrl = `wss://${this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')}/api/voice/ws?sessionKey=${sessionKey}`
 
     const newSession: NewVoiceSession = {
-      id: voiceSessionId,
+      id: sessionKey,
       conversationId,
       userId,
       characterId,
@@ -185,10 +187,12 @@ export class VoiceSessionService {
     await this.db.insert(voiceSessions).values(newSession)
 
     return {
-      sessionId: voiceSessionId,
+      sessionId: sessionKey,
+      sessionKey, // For backward compatibility
       conversationId,
       websocketUrl,
       character: character[0],
+      expiresAt: sessionData.expiresAt,
     }
   }
 

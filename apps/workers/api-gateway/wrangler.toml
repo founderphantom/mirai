@@ -14,10 +14,15 @@ database_id = "0e9b450e-3ee6-4cf8-b78b-f28d29907e81"
 binding = "USER_ASSETS"
 bucket_name = "mirai-user-assets"
 
-# KV Namespace Binding - Session Cache
+# KV Namespace Binding - General Cache
 [[kv_namespaces]]
 binding = "CACHE"
 id = "0c8c90fd2bc1430ba95596589f68ae1c"
+
+# KV Namespace Binding - Voice Session Cache (short TTL)
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "" # Run: wrangler kv:namespace create SESSION_CACHE --env production
 
 # Durable Objects Bindings
 [[durable_objects.bindings]]
@@ -25,9 +30,11 @@ name = "VOICE_SESSION"
 class_name = "VoiceSession"
 script_name = "mirai-api-gateway"
 
+# Container Binding - Voice Agent Runtime
 [[containers]]
-binding = "VOICE_AGENT"
+binding = "VOICE_AGENT_CONTAINER"
 image = "voice-agent-runtime:latest"
+max_instances = 10 # Scale up to 10 concurrent container instances
 
 # Environment Variables
 [vars]

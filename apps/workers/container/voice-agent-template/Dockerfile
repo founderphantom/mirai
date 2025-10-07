@@ -86,8 +86,8 @@ EXPOSE 4000
 # Use tini for proper signal handling
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Start the server
-CMD ["node", "dist/index.js"]
+# Start the multi-tenant server
+CMD ["node", "dist/index.multi-tenant.js"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

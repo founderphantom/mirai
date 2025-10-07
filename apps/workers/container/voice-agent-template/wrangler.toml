@@ -12,55 +12,34 @@ route = "" # Set via Cloudflare dashboard or environment
 [[containers]]
 binding = "VOICE_AGENT"
 image = "voice-agent-runtime:latest"
-# Max instances: scale based on demand (default: 10)
-max_instances = 10
+max_instances = 10 # Scale up to 10 concurrent container instances
 
-# Environment variables (non-sensitive)
-[env.production.vars]
+# Environment variables (non-sensitive) - passed to container
+[vars]
 NODE_ENV = "production"
 WS_APP_PORT = "4000"
 LOG_LEVEL = "info"
-GRAPH_VISUALIZATION_ENABLED = "false"
 
+# Environment-specific overrides
 [env.staging.vars]
 NODE_ENV = "staging"
-WS_APP_PORT = "4000"
 LOG_LEVEL = "debug"
-GRAPH_VISUALIZATION_ENABLED = "true"
 
 [env.development.vars]
 NODE_ENV = "development"
-WS_APP_PORT = "4000"
 LOG_LEVEL = "debug"
-GRAPH_VISUALIZATION_ENABLED = "true"
 
 # Observability
 [observability]
 enabled = true
 
-# Durable Objects binding (for session state management)
+# Durable Objects binding (worker-level session state)
 [[durable_objects.bindings]]
 name = "VOICE_SESSION"
 class_name = "VoiceSession"
 script_name = "voice-agent-container"
 
-# D1 Database binding (for conversation metadata, usage tracking)
-[[d1_databases]]
-binding = "DB"
-database_name = "mirai-production"
-database_id = "" # Set via environment or wrangler secret
-
-# R2 Storage binding (for audio recordings, exports)
-[[r2_buckets]]
-binding = "AUDIO_STORAGE"
-bucket_name = "mirai-voice-recordings"
-
-# KV Namespace binding (for session cache, rate limiting)
-[[kv_namespaces]]
-binding = "SESSION_CACHE"
-id = "" # Set via environment or wrangler secret
-
-# Analytics Engine binding (for telemetry, usage metrics)
+# Analytics Engine binding (for container metrics)
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
 

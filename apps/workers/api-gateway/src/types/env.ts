@@ -2,6 +2,8 @@
  * Environment bindings for Cloudflare Workers
  */
 
+import type { Container } from '@cloudflare/containers'
+
 export interface Env {
   // D1 Database
   DB: D1Database
@@ -9,11 +11,15 @@ export interface Env {
   // R2 Buckets
   USER_ASSETS: R2Bucket
 
-  // KV Namespace
+  // KV Namespaces
   CACHE: KVNamespace
+  SESSION_CACHE: KVNamespace
 
   // Durable Objects
   VOICE_SESSION: DurableObjectNamespace
+
+  // Container Bindings
+  VOICE_AGENT_CONTAINER: Container
 
   // Environment Variables
   ENVIRONMENT: string

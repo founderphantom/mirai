@@ -4,7 +4,10 @@
   "main": "index.js",
   "license": "SEE LICENSE IN LICENSE.md and LICENSE-CPP-BINARIES.md",
   "scripts": {
-    "start": "nodemon index.ts"
+    "start": "nodemon index.ts",
+    "start:multi-tenant": "nodemon index.multi-tenant.ts",
+    "build": "tsc",
+    "dev": "nodemon index.multi-tenant.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

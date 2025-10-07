@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cloudflare/containers": "^0.0.28",
     "@hono/zod-validator": "^0.4.1",
     "@proj-airi/database-schema": "workspace:*",
     "better-auth": "^1.1.7",
