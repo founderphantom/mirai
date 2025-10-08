@@ -62,21 +62,18 @@ export async function getCharacters(): Promise<CharactersResponse> {
     throw new Error('Not authenticated')
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/api/characters`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    }
-  )
+  const response = await fetch('/api/characters', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  })
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       message: 'Failed to fetch characters',
-    }))
+    })) as { message?: string }
     throw new Error(error.message || 'Failed to fetch characters')
   }
 
@@ -92,16 +89,13 @@ export async function getCharacter(characterId: string): Promise<Character> {
     throw new Error('Not authenticated')
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/api/characters/${characterId}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    }
-  )
+  const response = await fetch(`/api/characters/${characterId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  })
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -109,7 +103,7 @@ export async function getCharacter(characterId: string): Promise<Character> {
     }
     const error = await response.json().catch(() => ({
       message: 'Failed to fetch character',
-    }))
+    })) as { message?: string }
     throw new Error(error.message || 'Failed to fetch character')
   }
 
@@ -127,22 +121,19 @@ export async function createCharacter(
     throw new Error('Not authenticated')
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/api/characters`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    }
-  )
+  const response = await fetch('/api/characters', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       message: 'Failed to create character',
-    }))
+    })) as { message?: string }
     throw new Error(error.message || 'Failed to create character')
   }
 
@@ -161,22 +152,19 @@ export async function updateCharacter(
     throw new Error('Not authenticated')
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/api/characters/${characterId}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    }
-  )
+  const response = await fetch(`/api/characters/${characterId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       message: 'Failed to update character',
-    }))
+    })) as { message?: string }
     throw new Error(error.message || 'Failed to update character')
   }
 
@@ -192,18 +180,15 @@ export async function deleteCharacter(characterId: string): Promise<void> {
     throw new Error('Not authenticated')
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/api/characters/${characterId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    }
-  )
+  const response = await fetch(`/api/characters/${characterId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       message: 'Failed to delete character',
-    }))
+    })) as { message?: string }
     throw new Error(error.message || 'Failed to delete character')
   }
 }

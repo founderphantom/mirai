@@ -284,12 +284,12 @@ export const useProvidersStore = defineStore('providers', () => {
           }
 
           const response = await fetch(`${config.baseUrl as string}chat/completions`, { headers: { Authorization: `Bearer ${config.apiKey}` }, method: 'POST', body: `{"model": "test","messages": [{"role": "user","content": "Hello, world"}],"stream": false}` })
-          const responseJson = await response.json()
+          const responseJson = await response.json() as { user_id?: string; error?: { message: string } }
 
           if (!responseJson.user_id) {
             return {
-              errors: [new Error(`OpenRouterError: ${responseJson.error.message}`)],
-              reason: `OpenRouterError: ${responseJson.error.message}`,
+              errors: [new Error(`OpenRouterError: ${responseJson.error?.message || 'Unknown error'}`)],
+              reason: `OpenRouterError: ${responseJson.error?.message || 'Unknown error'}`,
               valid: false,
             }
           }
@@ -580,7 +580,7 @@ export const useProvidersStore = defineStore('providers', () => {
               throw new Error(`LM Studio server returned non-ok status code: ${response.statusText}`)
             }
 
-            const data = await response.json()
+            const data = await response.json() as { data: any[] }
             return data.data.map((model: any) => ({
               id: model.id,
               name: model.id,
@@ -1079,7 +1079,7 @@ export const useProvidersStore = defineStore('providers', () => {
           if (!response.ok) {
             throw new Error(`Failed to fetch voices: ${response.statusText}`)
           }
-          const voices = await response.json()
+          const voices = await response.json() as Record<string, any>
           return Object.keys(voices).map((voice: any) => {
             return {
               id: voice,
@@ -1611,7 +1611,9 @@ export const useProvidersStore = defineStore('providers', () => {
       capabilities: {
         listVoices: async (config) => {
           const baseUrl = (config.baseUrl as string).endsWith('/') ? (config.baseUrl as string).slice(0, -1) : config.baseUrl as string
-          return await fetch(`${baseUrl}/tts/voices`).then(res => res.json()).then(({ voices }) => (voices as { id: string, language: 'american_english' | 'british_english' | 'japanese' | 'mandarin_chinese' | 'spanish' | 'french' | 'hindi' | 'italian' | 'brazilian_portuguese', name: string, gender: string }[]).map(({ id, language, name, gender }) => (
+          const response = await fetch(`${baseUrl}/tts/voices`)
+          const data = await response.json() as { voices: { id: string, language: 'american_english' | 'british_english' | 'japanese' | 'mandarin_chinese' | 'spanish' | 'french' | 'hindi' | 'italian' | 'brazilian_portuguese', name: string, gender: string }[] }
+          return data.voices.map(({ id, language, name, gender }) => (
             {
 
               id,
@@ -1660,7 +1662,7 @@ export const useProvidersStore = defineStore('providers', () => {
 
               }[language]],
             }
-          )))
+          ))
         },
       },
       validators: {

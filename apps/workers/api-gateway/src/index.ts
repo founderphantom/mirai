@@ -29,7 +29,13 @@ const app = new Hono<HonoEnv>()
 
 // Global middleware
 app.use('*', cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://app.miraichat.ai'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://miraichat.app',
+    'https://www.miraichat.app',
+    'mirai-api-gateway.founder-968.workers.dev',
+  ],
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],

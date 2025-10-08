@@ -8,8 +8,14 @@ assets = { directory = "./dist", binding = "ASSETS" }
 
 # R2 Bucket for large assets
 [[r2_buckets]]
-binding = "MIRAI_ASSETS"
+binding = "PUBLIC_ASSETS"
 bucket_name = "mirai-assets"
+
+# Service Binding - API Gateway Worker
+[[services]]
+binding = "API_GATEWAY"
+service = "mirai-api-gateway"
+environment = "production"
 
 [observability]
 enabled = true

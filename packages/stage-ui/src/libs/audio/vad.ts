@@ -83,7 +83,7 @@ export function createVADStates(vad: BaseVAD, vadAudioWorkletUrl: string, option
       }
 
       audioWorkletNode = new AudioWorkletNode(audioContext, 'vad-audio-worklet-processor')
-      audioWorkletNode.port.onmessage = async (event) => {
+      audioWorkletNode.port.onmessage = async (event: MessageEvent) => {
         const { buffer } = event.data
         if (buffer && buffer.length > 0) {
           await vad.processAudio(new Float32Array(buffer))

@@ -51,7 +51,7 @@ router.beforeEach(async (to, from) => {
     // Check authentication status
     const session = await authClient.getSession()
 
-    if (!session?.user) {
+    if (!session?.data?.user) {
       // Not authenticated - redirect to sign in
       NProgress.done()
       return { path: '/auth/sign-in', query: { redirect: to.fullPath } }

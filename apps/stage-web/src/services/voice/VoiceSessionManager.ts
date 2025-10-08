@@ -1,10 +1,13 @@
 /**
  * Voice Session Manager
- * Handles voice session lifecycle (start, end) via API Gateway
+ *
+ * Manages voice session lifecycle with the API Gateway via service binding
+ *
+ * Note: Uses relative paths - worker proxies /api/* to API Gateway internally
  */
 
 import { authClient } from '@/lib/auth'
-import type { Character } from '@/services/api/characters'
+import type { Character } from '../api/characters'
 
 export interface VoiceSession {
   sessionKey: string
@@ -19,16 +22,8 @@ export interface VoiceSessionMetrics {
 }
 
 export class VoiceSessionManager {
-  private apiUrl: string
-  private wsUrl: string
-
-  constructor() {
-    this.apiUrl = import.meta.env.VITE_API_URL
-    this.wsUrl = import.meta.env.VITE_WS_URL
-  }
-
   /**
-   * Start a new voice session
+   * Start a new voice session with a character
    */
   async startSession(character: Character): Promise<VoiceSession> {
     const session = await authClient.getSession()
@@ -36,7 +31,8 @@ export class VoiceSessionManager {
       throw new Error('Not authenticated')
     }
 
-    const response = await fetch(`${this.apiUrl}/api/voice/session/start`, {
+    // Use relative path - worker proxies to API Gateway via service binding
+    const response = await fetch('/api/voice/session/start', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -48,17 +44,13 @@ export class VoiceSessionManager {
     })
 
     if (!response.ok) {
-      const error = await response.json()
+      const error = await response.json().catch(() => ({
+        message: 'Failed to start voice session',
+      })) as { message?: string }
       throw new Error(error.message || 'Failed to start voice session')
     }
 
-    const data = await response.json()
-
-    // Return session with websocket URL
-    return {
-      ...data,
-      websocketUrl: this.getWebSocketUrl(data.sessionKey),
-    }
+    return response.json()
   }
 
   /**
@@ -73,28 +65,31 @@ export class VoiceSessionManager {
       throw new Error('Not authenticated')
     }
 
-    const response = await fetch(
-      `${this.apiUrl}/api/voice/session/${sessionKey}/end`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(metrics),
-      }
-    )
+    // Use relative path - worker proxies to API Gateway via service binding
+    const response = await fetch(`/api/voice/session/${sessionKey}/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(metrics),
+    })
 
     if (!response.ok) {
-      const error = await response.json()
+      const error = await response.json().catch(() => ({
+        message: 'Failed to end voice session',
+      })) as { message?: string }
       throw new Error(error.message || 'Failed to end voice session')
     }
   }
 
   /**
    * Get WebSocket URL for voice streaming
+   * Constructs proper WebSocket URL based on current page protocol
    */
   getWebSocketUrl(sessionKey: string): string {
-    return `${this.wsUrl}/api/voice/ws?sessionKey=${sessionKey}`
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return `${protocol}//${host}/api/voice/ws?sessionKey=${sessionKey}`
   }
 }

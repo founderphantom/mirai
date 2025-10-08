@@ -5,22 +5,30 @@
  * - Email/password authentication
  * - Social OAuth providers (Google, Discord)
  * - Drizzle ORM adapter for D1 database
+ * - Polar payment integration
  * - Session management
  * - Rate limiting
  */
 
 import { betterAuth } from 'better-auth'
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { drizzle } from 'drizzle-orm/d1'
+import { polar, checkout, portal, usage, webhooks } from '@polar-sh/better-auth'
+import { Polar } from '@polar-sh/sdk'
 import type { Env } from '../types/env'
 
 export function createAuth(env: Env) {
   const db = drizzle(env.DB)
 
+  // Initialize Polar client
+  const polarClient = new Polar({
+    accessToken: env.POLAR_ACCESS_TOKEN,
+  })
+
   return betterAuth({
-    database: {
-      provider: 'd1',
-      db: env.DB,
-    },
+    database: drizzleAdapter(db, {
+      provider: 'sqlite', // Cloudflare D1 uses SQLite
+    }),
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
 
@@ -112,6 +120,24 @@ export function createAuth(env: Env) {
         },
       },
     },
+
+    // Polar Plugin for Payment Integration
+    plugins: [
+      polar({
+        client: polarClient,
+        createCustomerOnSignUp: true,
+        use: [
+          checkout({
+            organizationId: env.POLAR_ORGANIZATION_ID,
+          }),
+          portal(),
+          usage(),
+          webhooks({
+            secret: env.POLAR_WEBHOOK_SECRET,
+          }),
+        ],
+      }),
+    ],
   })
 }
 

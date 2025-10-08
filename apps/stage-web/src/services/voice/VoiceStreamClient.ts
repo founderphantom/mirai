@@ -1,6 +1,10 @@
 /**
  * Voice Stream Client
- * Handles WebSocket connection, audio streaming, and real-time communication
+ *
+ * Handles WebSocket communication for real-time voice streaming
+ * - Captures microphone audio and sends to server
+ * - Receives and plays TTS audio from server
+ * - Manages transcript and emotion events
  */
 
 export interface TranscriptMessage {

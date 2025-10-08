@@ -5,8 +5,11 @@ import { authClient } from '@/lib/auth'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const { data: session } = useSession()
+const sessionData = useSession()
+const session = computed(() => sessionData.value.data)
 const user = computed(() => session.value?.user)
+const isLoading = computed(() => sessionData.value.isPending)
+const error = computed(() => sessionData.value.error)
 
 async function handleSignOut() {
   await authClient.signOut()
@@ -21,17 +24,35 @@ function navigateToChat() {
 <template>
   <div class="dashboard">
     <div class="dashboard-container">
-      <!-- Header -->
-      <div class="dashboard-header">
-        <div class="header-content">
-          <h1>Welcome to Mirai</h1>
-          <p v-if="user" class="user-name">Hello, {{ user.name }}!</p>
-        </div>
-        <button @click="handleSignOut" class="sign-out-btn">Sign Out</button>
+      <!-- Loading State -->
+      <div v-if="isLoading" class="loading-container">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Loading your dashboard...</p>
       </div>
 
-      <!-- Main Content -->
-      <div class="dashboard-content">
+      <!-- Error State -->
+      <div v-else-if="error" class="error-container">
+        <div class="error-icon">⚠️</div>
+        <h2 class="error-title">Failed to load session</h2>
+        <p class="error-message">{{ error.message }}</p>
+        <button @click="router.push('/auth/sign-in')" class="retry-btn">
+          Return to Sign In
+        </button>
+      </div>
+
+      <!-- Main Content (when loaded) -->
+      <template v-else-if="user">
+        <!-- Header -->
+        <div class="dashboard-header">
+          <div class="header-content">
+            <h1>Welcome to Mirai</h1>
+            <p v-if="user" class="user-name">Hello, {{ user.name }}!</p>
+          </div>
+          <button @click="handleSignOut" class="sign-out-btn">Sign Out</button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="dashboard-content">
         <div class="hero">
           <div class="hero-text">
             <h2>Your AI Companion Platform</h2>
@@ -77,6 +98,7 @@ function navigateToChat() {
           </RouterLink>
         </div>
       </div>
+      </template>
     </div>
   </div>
 </template>
@@ -246,5 +268,87 @@ function navigateToChat() {
 .action-text {
   font-size: 1.125rem;
   font-weight: 600;
+}
+
+/* Loading State */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-text {
+  margin-top: 1.5rem;
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+/* Error State */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  background: white;
+  border-radius: 16px;
+  padding: 3rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.error-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.error-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1a202c;
+  margin-bottom: 1rem;
+}
+
+.error-message {
+  font-size: 1.125rem;
+  color: #6b7280;
+  margin-bottom: 2rem;
+  max-width: 500px;
+}
+
+.retry-btn {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.retry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 </style>

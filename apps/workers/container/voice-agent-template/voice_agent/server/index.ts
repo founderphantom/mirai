@@ -72,7 +72,11 @@ server.on('upgrade', async (request, socket, head) => {
 
 server.listen(WS_APP_PORT, async () => {
   try {
-    await inworldApp.initialize();
+    const apiKey = process.env.INWORLD_API_KEY;
+    if (!apiKey) {
+      throw new Error('INWORLD_API_KEY environment variable is required');
+    }
+    await inworldApp.initialize(apiKey);
   } catch (error) {
     console.error(error);
   }

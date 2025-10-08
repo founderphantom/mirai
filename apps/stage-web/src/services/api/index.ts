@@ -6,9 +6,14 @@ export * from './characters'
 
 /**
  * Common API utilities
+ *
+ * Note: All API requests now use relative paths (e.g., '/api/characters')
+ * The static asset worker proxies these to the API Gateway via service binding
  */
 export function getApiUrl(path: string): string {
-  return `${import.meta.env.VITE_API_URL}${path}`
+  // Use relative path for service binding
+  // Worker will proxy /api/* requests to API Gateway internally
+  return path.startsWith('/api/') ? path : `/api${path}`
 }
 
 /**
@@ -30,7 +35,7 @@ export async function apiRequest<T>(
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       message: `HTTP ${response.status}: ${response.statusText}`,
-    }))
+    })) as { message?: string }
     throw new Error(error.message || 'API request failed')
   }
 

@@ -26,6 +26,10 @@ function selectCharacter(character: Character) {
   selectedCharacter.value = character
   emit('select', character)
 }
+
+function reloadPage() {
+  window.location.reload()
+}
 </script>
 
 <template>
@@ -39,7 +43,7 @@ function selectCharacter(character: Character) {
 
     <div v-else-if="error" class="error">
       <p>{{ error }}</p>
-      <button @click="() => window.location.reload()">Retry</button>
+      <button @click="reloadPage">Retry</button>
     </div>
 
     <div v-else-if="characters.length === 0" class="empty">

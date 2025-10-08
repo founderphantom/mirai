@@ -1,17 +1,23 @@
 /**
  * Cloudflare Worker for Mirai Stage Web (Vue SPA)
- * Handles static asset serving, SPA routing, custom headers, and redirects
+ * Handles static asset serving, SPA routing, custom headers, redirects, and API proxying
  */
 
-export interface Env {
+interface Env {
   ASSETS: Fetcher
   PUBLIC_ASSETS: R2Bucket
+  API_GATEWAY: Fetcher
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     const pathname = url.pathname
+
+    // Proxy API requests to API Gateway using service binding
+    if (pathname.startsWith('/api/')) {
+      return env.API_GATEWAY.fetch(request)
+    }
 
     // List of large assets stored in R2
     const r2AssetPaths = [
