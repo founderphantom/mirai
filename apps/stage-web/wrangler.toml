@@ -15,7 +15,14 @@ bucket_name = "mirai-assets"
 [[services]]
 binding = "API_GATEWAY"
 service = "mirai-api-gateway"
-environment = "production"
+
+# Environment variables (non-sensitive) - passed to container
+[vars]
+VITE_ENVIRONMENT= "production"
+VITE_API_URL = "https://api.miraichat.app"
+VITE_WS_URL = "wss://api.miraichat.app"
+VITE_AIRI_WS_URL= ""
+LOG_LEVEL = "info"
 
 [observability]
 enabled = true

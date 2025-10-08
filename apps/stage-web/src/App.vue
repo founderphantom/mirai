@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { OnboardingDialog, ToasterRoot } from '@proj-airi/stage-ui/components'
+import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { useConfiguratorForAiriSdk } from '@proj-airi/stage-ui/stores/configurator'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
-import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { StageTransitionGroup } from '@proj-airi/ui-transitions'
 import { useDark } from '@vueuse/core'
@@ -23,8 +22,6 @@ const router = useRouter()
 const displayModelsStore = useDisplayModelsStore()
 const settingsStore = useSettings()
 const settings = storeToRefs(settingsStore)
-const onboardingStore = useOnboardingStore()
-const { shouldShowSetup } = storeToRefs(onboardingStore)
 const isDark = useDark()
 const { dispose } = useConfiguratorForAiriSdk()
 
@@ -79,31 +76,38 @@ watch(
     // Ensure path is a string
     const currentPath = typeof path === 'string' ? path : '/'
 
-    // Define routes that don't require authentication
+    // Define routes that don't require authentication (landing page and auth pages)
     const publicRoutes = ['/auth/sign-in', '/auth/sign-up', '/']
+    const authRoutes = ['/auth/sign-in', '/auth/sign-up']
     const isPublicRoute = publicRoutes.includes(currentPath)
+    const isAuthRoute = authRoutes.includes(currentPath)
 
-    // Redirect to sign-in if not authenticated and trying to access protected route
+    // Redirect authenticated users from landing page to dashboard
+    if (authenticated && currentPath === '/') {
+      router.push('/dashboard')
+      return
+    }
+
+    // Redirect authenticated users from auth pages to dashboard
+    if (authenticated && isAuthRoute) {
+      const redirect = router.currentRoute.value.query.redirect as string
+      router.push(redirect || '/dashboard')
+      return
+    }
+
+    // Redirect unauthenticated users from protected routes to sign-in
     if (!authenticated && !isPublicRoute) {
       router.push({
         path: '/auth/sign-in',
         query: { redirect: currentPath },
       })
     }
-
-    // Redirect to home if authenticated and on auth page
-    if (authenticated && (currentPath === '/auth/sign-in' || currentPath === '/auth/sign-up')) {
-      const redirect = router.currentRoute.value.query.redirect as string
-      router.push(redirect || '/')
-    }
   },
   { immediate: true },
 )
 
-// Initialize first-time setup check when app mounts
+// Initialize stores when app mounts
 onMounted(async () => {
-  onboardingStore.initializeSetupCheck()
-
   await displayModelsStore.loadDisplayModelsFromIndexedDB()
   await settingsStore.initializeStageModel()
 })
@@ -111,15 +115,6 @@ onMounted(async () => {
 onUnmounted(() => {
   dispose()
 })
-
-// Handle first-time setup events
-function handleSetupConfigured() {
-  onboardingStore.markSetupCompleted()
-}
-
-function handleSetupSkipped() {
-  onboardingStore.markSetupSkipped()
-}
 </script>
 
 <template>
@@ -152,13 +147,6 @@ function handleSetupSkipped() {
     <ToasterRoot @close="id => toast.dismiss(id)">
       <Toaster />
     </ToasterRoot>
-
-    <!-- First Time Setup Dialog -->
-    <OnboardingDialog
-      v-model="shouldShowSetup"
-      @configured="handleSetupConfigured"
-      @skipped="handleSetupSkipped"
-    />
   </template>
 </template>
 

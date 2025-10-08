@@ -5,7 +5,7 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Worker configuration
-workers_dev = true
+workers_dev = false
 
 # Container configuration (Durable Object that runs a container)
 [[containers]]
@@ -33,11 +33,6 @@ deleted_classes = ["VoiceSession"]
 NODE_ENV = "production"
 WS_APP_PORT = "4000"
 LOG_LEVEL = "info"
-
-# Environment-specific overrides
-[env.development.vars]
-NODE_ENV = "development"
-LOG_LEVEL = "debug"
 
 # Observability
 [observability]

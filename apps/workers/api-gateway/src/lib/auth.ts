@@ -16,9 +16,10 @@ import { drizzle } from 'drizzle-orm/d1'
 import { polar, checkout, portal, usage, webhooks } from '@polar-sh/better-auth'
 import { Polar } from '@polar-sh/sdk'
 import type { Env } from '../types/env'
+import * as schema from '@proj-airi/database-schema'
 
 export function createAuth(env: Env) {
-  const db = drizzle(env.DB)
+  const db = drizzle(env.DB, { schema })
 
   // Initialize Polar client
   const polarClient = new Polar({
@@ -28,9 +29,23 @@ export function createAuth(env: Env) {
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: 'sqlite', // Cloudflare D1 uses SQLite
+      schema: {
+        user: schema.user,
+        session: schema.session,
+        account: schema.account,
+        verification: schema.verification,
+      },
     }),
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
+    trustedOrigins: [
+      'https://mirai-stage-web.founder-968.workers.dev',
+      'https://mirai-api-gateway.founder-968.workers.dev',
+      'https://miraichat.app',
+      'https://www.miraichat.app',
+      'http://localhost:3000',
+      'http://localhost:5173',
+    ],
 
     // Email & Password Authentication
     emailAndPassword: {
@@ -58,11 +73,13 @@ export function createAuth(env: Env) {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         scope: ['email', 'profile'],
+        redirectURI: 'https://mirai-stage-web.founder-968.workers.dev/api/auth/callback/google',
       },
       discord: {
         clientId: env.DISCORD_CLIENT_ID,
         clientSecret: env.DISCORD_CLIENT_SECRET,
         scope: ['identify', 'email'],
+        redirectURI: 'https://mirai-stage-web.founder-968.workers.dev/api/auth/callback/discord',
       },
     },
 

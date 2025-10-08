@@ -80,7 +80,11 @@ export const useConfiguratorForAiriSdk = defineStore('configurator:adapter:proj-
   }
 
   onMounted(() => {
-    init()
+    // Only auto-init if VITE_AIRI_WS_URL is explicitly set (not empty/undefined)
+    const wsUrl = import.meta.env.VITE_AIRI_WS_URL
+    if (wsUrl && wsUrl.trim() !== '') {
+      init()
+    }
   })
 
   return {

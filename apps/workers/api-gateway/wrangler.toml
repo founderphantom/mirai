@@ -34,7 +34,6 @@ script_name = "mirai-api-gateway"
 [[services]]
 binding = "VOICE_AGENT"
 service = "voice-agent-container"
-environment = "production"
 
 # Migrations for Durable Objects
 [[migrations]]
@@ -44,7 +43,23 @@ new_sqlite_classes = ["VoiceSession"]
 # Environment Variables
 [vars]
 ENVIRONMENT = "production"
-BETTER_AUTH_URL = "https://api.miraichat.app"
+# BETTER_AUTH_URL should match your production domain
+# Use custom domain if available, otherwise use workers.dev URL
+BETTER_AUTH_URL = "https://mirai-api-gateway.founder-968.workers.dev"
+
+# Required Secrets (set with: wrangler secret put SECRET_NAME)
+# See AUTHENTICATION_SETUP.md in project root for detailed instructions
+#
+# - BETTER_AUTH_SECRET           (required) Generate with: npx @better-auth/cli secret
+# - GOOGLE_CLIENT_ID             (required) From Google Cloud Console
+# - GOOGLE_CLIENT_SECRET         (required) From Google Cloud Console
+# - DISCORD_CLIENT_ID            (optional) From Discord Developer Portal
+# - DISCORD_CLIENT_SECRET        (optional) From Discord Developer Portal
+# - POLAR_ACCESS_TOKEN           (required) From Polar dashboard
+# - POLAR_ORGANIZATION_ID        (required) From Polar dashboard
+# - POLAR_WEBHOOK_SECRET         (required) From Polar dashboard
+# - INWORLD_API_KEY              (required) From Inworld AI dashboard
+# - INWORLD_WORKSPACE_ID         (required) From Inworld AI dashboard
 
 [observability]
 enabled = true

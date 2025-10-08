@@ -1,194 +1,110 @@
 /**
- * Characters API Service
- *
- * Handles all character-related API requests
+ * Character API Service
+ * Handles all character-related API calls to the API Gateway
  */
 
-import { authClient } from '@/lib/auth'
+// Character interfaces
+export interface PersonalityConfig {
+  dialogueStyle: string
+  adjectives: string[]
+  tone: string
+}
 
-/**
- * Character type matching database schema
- */
 export interface Character {
   id: string
-  userId: string
-  inworldCharacterId: string
   displayName: string
-  live2dModelKey?: string
   avatarThumbnail?: string
-  personalityConfig: {
-    motivations: string[]
-    flaws: string[]
-    dialogueStyle: string
-    adjectives: string[]
-    voiceConfig?: {
-      pitch?: number
-      speed?: number
-      emotionRange?: 'low' | 'medium' | 'high'
-    }
-  }
-  isPublic: boolean
+  live2dModelPath?: string
+  personalityConfig: PersonalityConfig
   totalConversations: number
   createdAt: string
   updatedAt: string
 }
 
-export interface CharactersResponse {
+export interface GetCharactersResponse {
   characters: Character[]
-}
-
-export interface CreateCharacterRequest {
-  displayName: string
-  personalityConfig: {
-    motivations: string[]
-    flaws: string[]
-    dialogueStyle: string
-    adjectives: string[]
-    voiceConfig?: {
-      pitch?: number
-      speed?: number
-      emotionRange?: 'low' | 'medium' | 'high'
-    }
-  }
-  live2dModelKey?: string
+  total: number
 }
 
 /**
- * Get all characters for the current user
+ * Get all characters for the authenticated user
  */
-export async function getCharacters(): Promise<CharactersResponse> {
-  const session = await authClient.getSession()
-  if (!session) {
-    throw new Error('Not authenticated')
+export async function getCharacters(): Promise<GetCharactersResponse> {
+  try {
+    const response = await fetch('/api/characters', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Include cookies for authentication
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch characters: ${response.statusText}`)
+    }
+
+    return await response.json()
   }
-
-  const response = await fetch('/api/characters', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({
-      message: 'Failed to fetch characters',
-    })) as { message?: string }
-    throw new Error(error.message || 'Failed to fetch characters')
+  catch (error) {
+    console.error('Error fetching characters:', error)
+    throw error
   }
-
-  return response.json()
 }
 
 /**
- * Get a single character by ID
+ * Get a specific character by ID
  */
 export async function getCharacter(characterId: string): Promise<Character> {
-  const session = await authClient.getSession()
-  if (!session) {
-    throw new Error('Not authenticated')
-  }
+  try {
+    const response = await fetch(`/api/characters/${characterId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    })
 
-  const response = await fetch(`/api/characters/${characterId}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error('Character not found')
+    if (!response.ok) {
+      throw new Error(`Failed to fetch character: ${response.statusText}`)
     }
-    const error = await response.json().catch(() => ({
-      message: 'Failed to fetch character',
-    })) as { message?: string }
-    throw new Error(error.message || 'Failed to fetch character')
-  }
 
-  return response.json()
+    return await response.json()
+  }
+  catch (error) {
+    console.error('Error fetching character:', error)
+    throw error
+  }
 }
 
 /**
- * Create a new character
+ * For MVP: Get hardcoded Hiyori character
+ * This is a mock function until the backend character system is fully implemented
  */
-export async function createCharacter(
-  data: CreateCharacterRequest
-): Promise<Character> {
-  const session = await authClient.getSession()
-  if (!session) {
-    throw new Error('Not authenticated')
-  }
-
-  const response = await fetch('/api/characters', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+export function getMVPCharacter(): Character {
+  return {
+    id: 'hiyori_pro_zh',
+    displayName: 'Hiyori',
+    avatarThumbnail: '/assets/live2d/models/hiyori_pro_zh/thumbnail.png',
+    live2dModelPath: '/assets/live2d/models/hiyori_pro_zh.zip',
+    personalityConfig: {
+      dialogueStyle: 'Friendly and supportive',
+      adjectives: ['Cheerful', 'Caring', 'Energetic'],
+      tone: 'warm',
     },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({
-      message: 'Failed to create character',
-    })) as { message?: string }
-    throw new Error(error.message || 'Failed to create character')
+    totalConversations: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   }
-
-  return response.json()
 }
 
 /**
- * Update an existing character
+ * For MVP: Get characters list (currently just Hiyori)
+ * This is a mock function until the backend character system is fully implemented
  */
-export async function updateCharacter(
-  characterId: string,
-  data: Partial<CreateCharacterRequest>
-): Promise<Character> {
-  const session = await authClient.getSession()
-  if (!session) {
-    throw new Error('Not authenticated')
-  }
-
-  const response = await fetch(`/api/characters/${characterId}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({
-      message: 'Failed to update character',
-    })) as { message?: string }
-    throw new Error(error.message || 'Failed to update character')
-  }
-
-  return response.json()
-}
-
-/**
- * Delete a character
- */
-export async function deleteCharacter(characterId: string): Promise<void> {
-  const session = await authClient.getSession()
-  if (!session) {
-    throw new Error('Not authenticated')
-  }
-
-  const response = await fetch(`/api/characters/${characterId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({
-      message: 'Failed to delete character',
-    })) as { message?: string }
-    throw new Error(error.message || 'Failed to delete character')
+export function getMVPCharacters(): GetCharactersResponse {
+  const hiyori = getMVPCharacter()
+  return {
+    characters: [hiyori],
+    total: 1,
   }
 }
