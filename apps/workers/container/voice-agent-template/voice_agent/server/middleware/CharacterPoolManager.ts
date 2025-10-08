@@ -36,6 +36,13 @@ interface SessionData {
 interface CharacterConfig {
   agent: Agent
   userName: string
+  apiKey: string // Inworld API key from X-Inworld-API-Key header
+  voiceConfig?: {
+    voiceId?: string
+    llmModelName?: string
+    llmProvider?: string
+    ttsModelId?: string
+  }
 }
 
 export class CharacterPoolManager {
@@ -94,7 +101,10 @@ export class CharacterPoolManager {
 
     const app = new InworldApp()
 
-    // Initialize will happen when load() is called
+    // Initialize the Inworld app with character-specific config
+    console.log(`[CharacterPool] Initializing Inworld app for character ${characterId}`)
+    await app.initialize(config.apiKey, config.voiceConfig)
+
     // Store the character instance
     charInstance = {
       characterId,
@@ -106,7 +116,7 @@ export class CharacterPoolManager {
 
     this.characters.set(characterId, charInstance)
     console.log(
-      `[CharacterPool] Character ${characterId} instance created. Total characters: ${this.characters.size}`,
+      `[CharacterPool] Character ${characterId} initialized successfully. Total characters: ${this.characters.size}`,
     )
 
     return app

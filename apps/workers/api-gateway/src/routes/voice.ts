@@ -7,7 +7,6 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../types/env'
 import { VoiceSessionService } from '../services/voice'
-import { getContainer } from '@cloudflare/containers'
 
 const voiceRoutes = new Hono<HonoEnv>()
 
@@ -198,15 +197,14 @@ voiceRoutes.get('/ws', async (c) => {
       }),
     })
 
-    // 6. Forward to voice agent container
+    // 6. Forward to voice agent container via service binding
     console.log('[VOICE_WS] Forwarding WebSocket upgrade to container:', {
       sessionKey,
       userId: sessionData.userId,
       characterId: sessionData.characterId,
     })
 
-    const container = getContainer(c.env.VOICE_AGENT_CONTAINER)
-    return container.fetch(containerRequest)
+    return c.env.VOICE_AGENT.fetch(containerRequest)
 
   } catch (error) {
     console.error('[VOICE_WS] WebSocket proxy error:', error)

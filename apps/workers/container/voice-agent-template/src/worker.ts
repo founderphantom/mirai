@@ -32,11 +32,6 @@ export class VoiceAgentContainer extends Container {
  */
 export interface Env {
   VOICE_AGENT: Container
-  DB: D1Database
-  VOICE_SESSION: DurableObjectNamespace
-  SESSION_CACHE: KVNamespace
-  AUDIO_STORAGE: R2Bucket
-  ANALYTICS: AnalyticsEngineDataset
 
   // Environment variables
   NODE_ENV: string
@@ -102,36 +97,4 @@ export default {
       })
     }
   },
-}
-
-/**
- * Durable Object for session state management
- */
-export class VoiceSession implements DurableObject {
-  private state: DurableObjectState
-  private sessionData: any
-
-  constructor(state: DurableObjectState, _env: Env) {
-    this.state = state
-  }
-
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-    const path = url.pathname
-
-    if (path === '/init' && request.method === 'POST') {
-      this.sessionData = await request.json()
-      await this.state.storage.put('session', this.sessionData)
-      return new Response('Session initialized', { status: 200 })
-    }
-
-    if (path === '/state' && request.method === 'GET') {
-      const session = await this.state.storage.get('session')
-      return new Response(JSON.stringify(session), {
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    return new Response('Not found', { status: 404 })
-  }
 }

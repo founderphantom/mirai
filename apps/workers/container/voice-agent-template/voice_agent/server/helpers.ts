@@ -8,13 +8,12 @@ import {
   DEFAULT_VOICE_ID,
 } from './constants';
 
+/**
+ * Parse environment variables for server configuration
+ * Note: API key is NOT loaded from env - it comes from request headers
+ */
 export const parseEnvironmentVariables = () => {
-  if (!process.env.INWORLD_API_KEY) {
-    throw new Error('INWORLD_API_KEY env variable is required');
-  }
-
   return {
-    apiKey: process.env.INWORLD_API_KEY,
     llmModelName: process.env.LLM_MODEL_NAME || DEFAULT_LLM_MODEL_NAME,
     llmProvider: process.env.LLM_PROVIDER || DEFAULT_PROVIDER,
     voiceId: process.env.VOICE_ID || DEFAULT_VOICE_ID,

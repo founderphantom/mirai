@@ -2,8 +2,6 @@
  * Environment bindings for Cloudflare Workers
  */
 
-import type { Container } from '@cloudflare/containers'
-
 export interface Env {
   // D1 Database
   DB: D1Database
@@ -18,8 +16,8 @@ export interface Env {
   // Durable Objects
   VOICE_SESSION: DurableObjectNamespace
 
-  // Container Bindings
-  VOICE_AGENT_CONTAINER: Container
+  // Service Bindings (Worker-to-Worker)
+  VOICE_AGENT: Fetcher  // Service binding to voice-agent-container Worker
 
   // Environment Variables
   ENVIRONMENT: string

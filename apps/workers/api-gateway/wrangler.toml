@@ -24,17 +24,22 @@ id = "0c8c90fd2bc1430ba95596589f68ae1c"
 binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
 
-# Durable Objects Bindings
+# Durable Objects - API Gateway Session Management
 [[durable_objects.bindings]]
 name = "VOICE_SESSION"
 class_name = "VoiceSession"
 script_name = "mirai-api-gateway"
 
-# Container Binding - Voice Agent Runtime
-#[[containers]]
-#binding = "VOICE_AGENT_CONTAINER"
-#image = "voice-agent-runtime:latest"
-#max_instances = 10 # Scale up to 10 concurrent container instances
+# Service Binding - Voice Agent Worker
+[[services]]
+binding = "VOICE_AGENT"
+service = "voice-agent-container"
+environment = "production"
+
+# Migrations for Durable Objects
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceSession"]
 
 # Environment Variables
 [vars]

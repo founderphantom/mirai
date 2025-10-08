@@ -197,17 +197,29 @@ app.post('/load', async (req, res) => {
     // Extract headers from API Gateway
     const characterId = req.headers['x-character-id'] as string
     const inworldCharacterId = req.headers['x-inworld-character-id'] as string
+    const inworldApiKey = req.headers['x-inworld-api-key'] as string
 
-    if (!characterId || !inworldCharacterId) {
-      return res.status(400).json({ error: 'Missing character headers' })
+    if (!characterId || !inworldCharacterId || !inworldApiKey) {
+      return res.status(400).json({ error: 'Missing required headers' })
     }
 
     console.log(`[Load] Loading character ${characterId} for session ${sessionKey}`)
 
+    // Parse voice config from request body if provided
+    const voiceConfig = req.body.voiceConfig as {
+      voiceId?: string
+      llmModelName?: string
+      llmProvider?: string
+      ttsModelId?: string
+    } | undefined
+
     // Get or create character instance (multi-tenant)
+    // This will initialize the Inworld app if it's a new character
     const inworldApp = await characterPool.getOrCreateCharacter(characterId, inworldCharacterId, {
       agent,
       userName,
+      apiKey: inworldApiKey,
+      voiceConfig,
     })
 
     // Initialize connection state for this session
@@ -224,7 +236,7 @@ app.post('/load', async (req, res) => {
       ws: null, // Will be set when WebSocket connects
     }
 
-    // Load the agent (this will initialize the Inworld app if needed)
+    // Load the agent (this creates the system message)
     await inworldApp.load(req, res)
 
     console.log(`[Load] Character ${characterId} loaded for session ${sessionKey}`)

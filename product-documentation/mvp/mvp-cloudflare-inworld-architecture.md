@@ -1,10 +1,11 @@
 # MVP Architecture: Cloudflare + Inworld Runtime
 ## AI Companion Platform with Live2D & Voice Interaction
 
-**Status:** MVP Architecture Design
+**Status:** MVP Implementation in Progress (Phase 1 Complete - API Gateway + Voice Agent)
 **Target Scale:** 5,000 monthly active users (MVP), 10,000+ (Production)
 **Created:** 2025-10-02
-**Version:** 1.0
+**Last Updated:** 2025-10-07
+**Version:** 1.1
 
 ---
 
@@ -23,6 +24,108 @@
 11. [Cost Breakdown (MVP)](#cost-breakdown-mvp)
 12. [Deployment Guide](#deployment-guide)
 13. [Migration Path](#migration-path)
+
+---
+
+## 🚀 Implementation Status
+
+### ✅ Phase 1: Backend Infrastructure (COMPLETE)
+
+**API Gateway Worker** (`apps/workers/api-gateway`)
+- ✅ Hono framework setup with TypeScript
+- ✅ Better-Auth integration configured
+- ✅ D1 database binding (`mirai-production`)
+- ✅ R2 buckets configured (`USER_ASSETS`)
+- ✅ KV namespaces for caching (`CACHE`, `SESSION_CACHE`)
+- ✅ Service binding to voice-agent-container
+- ✅ CORS and middleware setup
+- ✅ Character routes (`/api/characters`)
+- ✅ Voice session routes (`/api/voice`)
+- ✅ Asset management routes (`/api/assets`)
+- ✅ Polar webhook routes (`/api/webhooks`)
+- 🔴 **Bug Found:** Voice WebSocket proxy using incorrect API (line 208 in `routes/voice.ts`)
+
+**Voice Agent Container** (`apps/workers/container/voice-agent-template`)
+- ✅ Cloudflare Container (Durable Object) configured
+- ✅ Multi-stage Dockerfile with Node.js 20
+- ✅ Express.js + Inworld Runtime integration
+- ✅ Worker validation for incoming requests
+- ✅ Header extraction for authentication
+- ✅ Container lifecycle configuration (5min idle, max 10 instances)
+- ⏳ **Pending:** Multi-tenant character pooling implementation
+- ⏳ **Pending:** WebSocket message handling implementation
+- ⏳ **Pending:** Inworld Runtime voice pipeline integration
+
+**Database Schema** (`packages/database-schema`)
+- ✅ Drizzle ORM setup with D1 adapter
+- ✅ Auth tables (users, sessions, accounts, verification)
+- ✅ Character tables (characters, ownership)
+- ✅ Voice session tables (voiceSessions, conversations)
+- ✅ Subscription tables (subscriptions, usageEvents)
+- ⏳ **Pending:** Database migrations generated and applied
+- ⏳ **Pending:** Test data seeding
+
+### ⏳ Phase 2: Frontend Integration (NOT STARTED)
+
+**Frontend App** (`apps/stage-web`)
+- ❌ Better-Auth client integration
+- ❌ Authentication pages (sign-in, sign-up)
+- ❌ Character selector component
+- ❌ Voice chat interface
+- ❌ WebSocket audio streaming client
+- ❌ Live2D/VRM renderer integration
+- ❌ Chat history display
+
+### ⏳ Phase 3: Payment & Subscriptions (NOT STARTED)
+
+**Polar Integration**
+- ❌ Webhook handler implementation
+- ❌ Subscription status checks
+- ❌ Usage-based billing tracking
+- ❌ Customer portal integration
+
+### 🔧 Critical Issues to Fix
+
+1. **Voice WebSocket Proxy** (`apps/workers/api-gateway/src/routes/voice.ts:208`)
+   ```typescript
+   // ❌ Current (BROKEN)
+   const container = getContainer(c.env.VOICE_AGENT_CONTAINER)
+
+   // ✅ Should be
+   return c.env.VOICE_AGENT.fetch(containerRequest)
+   ```
+
+2. **Missing Secrets Configuration**
+   - Need to set secrets via `wrangler secret put`:
+     - `BETTER_AUTH_SECRET`
+     - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+     - `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET`
+     - `POLAR_ACCESS_TOKEN` / `POLAR_WEBHOOK_SECRET`
+     - `INWORLD_API_KEY` / `INWORLD_WORKSPACE_ID`
+
+3. **Database Migrations Not Applied**
+   - Run `pnpm db:generate` in `packages/database-schema`
+   - Apply migrations to D1: `wrangler d1 execute mirai-production --file=./migrations/xxx.sql`
+
+4. **Container Runtime Not Implemented**
+   - Voice agent Express.js server needs implementation
+   - Inworld Runtime integration pending
+   - Character pooling logic not written
+
+### 📋 Next Steps (Priority Order)
+
+1. **Fix critical bug** in voice WebSocket proxy (5 min)
+2. **Set Cloudflare secrets** for API keys (10 min)
+3. **Apply database migrations** to D1 (15 min)
+4. **Implement voice agent runtime** (4-6 hours)
+   - Express.js WebSocket server
+   - Inworld Runtime integration
+   - Character pooling manager
+5. **Test end-to-end flow** with curl/Postman (1 hour)
+6. **Begin frontend integration** (1-2 days)
+   - Better-Auth client setup
+   - Character selector UI
+   - Voice chat component
 
 ---
 

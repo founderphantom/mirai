@@ -18,14 +18,15 @@ max_instances = 10
 name = "VOICE_AGENT"
 class_name = "VoiceAgentContainer"
 
-[[durable_objects.bindings]]
-name = "VOICE_SESSION"
-class_name = "VoiceSession"
-
-# Migrations (required for new Durable Objects)
+# Migrations have been applied - keeping for reference
+# You can remove these after successful deployment
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["VoiceAgentContainer", "VoiceSession"]
+new_sqlite_classes = ["VoiceAgentContainer"]
+
+[[migrations]]
+tag = "v2"
+deleted_classes = ["VoiceSession"]
 
 # Environment variables (non-sensitive) - passed to container
 [vars]

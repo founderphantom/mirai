@@ -1,10 +1,14 @@
 /**
- * Character API Service
+ * Characters API Service
+ *
  * Handles all character-related API requests
  */
 
 import { authClient } from '@/lib/auth'
 
+/**
+ * Character type matching database schema
+ */
 export interface Character {
   id: string
   userId: string
@@ -50,7 +54,7 @@ export interface CreateCharacterRequest {
 }
 
 /**
- * Get all characters for the authenticated user
+ * Get all characters for the current user
  */
 export async function getCharacters(): Promise<CharactersResponse> {
   const session = await authClient.getSession()
@@ -65,12 +69,14 @@ export async function getCharacters(): Promise<CharactersResponse> {
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include', // Include auth cookies
+      credentials: 'include',
     }
   )
 
   if (!response.ok) {
-    const error = await response.json()
+    const error = await response.json().catch(() => ({
+      message: 'Failed to fetch characters',
+    }))
     throw new Error(error.message || 'Failed to fetch characters')
   }
 
@@ -101,7 +107,9 @@ export async function getCharacter(characterId: string): Promise<Character> {
     if (response.status === 404) {
       throw new Error('Character not found')
     }
-    const error = await response.json()
+    const error = await response.json().catch(() => ({
+      message: 'Failed to fetch character',
+    }))
     throw new Error(error.message || 'Failed to fetch character')
   }
 
@@ -132,7 +140,9 @@ export async function createCharacter(
   )
 
   if (!response.ok) {
-    const error = await response.json()
+    const error = await response.json().catch(() => ({
+      message: 'Failed to create character',
+    }))
     throw new Error(error.message || 'Failed to create character')
   }
 
@@ -154,7 +164,7 @@ export async function updateCharacter(
   const response = await fetch(
     `${import.meta.env.VITE_API_URL}/api/characters/${characterId}`,
     {
-      method: 'PUT',
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -164,7 +174,9 @@ export async function updateCharacter(
   )
 
   if (!response.ok) {
-    const error = await response.json()
+    const error = await response.json().catch(() => ({
+      message: 'Failed to update character',
+    }))
     throw new Error(error.message || 'Failed to update character')
   }
 
@@ -189,7 +201,9 @@ export async function deleteCharacter(characterId: string): Promise<void> {
   )
 
   if (!response.ok) {
-    const error = await response.json()
+    const error = await response.json().catch(() => ({
+      message: 'Failed to delete character',
+    }))
     throw new Error(error.message || 'Failed to delete character')
   }
 }
