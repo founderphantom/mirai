@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { SpeechProviderWithExtraOptions } from '@xsai-ext/shared-providers'
+// MVP: Disabled provider-based speech - using Inworld SDK for TTS
+// import type { SpeechProviderWithExtraOptions } from '@xsai-ext/shared-providers'
 
 import {
   Alert,
@@ -10,40 +11,40 @@ import {
   TestDummyMarker,
   VoiceCardManySelect,
 } from '@proj-airi/stage-ui/components'
-import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
-import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+// import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
+// import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import {
   FieldCheckbox,
   FieldInput,
   FieldRange,
   Textarea,
 } from '@proj-airi/ui'
-import { generateSpeech } from '@xsai/generate-speech'
-import { storeToRefs } from 'pinia'
+// import { generateSpeech } from '@xsai/generate-speech'
+// import { storeToRefs } from 'pinia'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 const { t } = useI18n()
-const providersStore = useProvidersStore()
-const speechStore = useSpeechStore()
-const { configuredSpeechProvidersMetadata } = storeToRefs(providersStore)
-const {
-  activeSpeechProvider,
-  activeSpeechModel,
-  activeSpeechVoice,
-  activeSpeechVoiceId,
-  pitch,
-  isLoadingSpeechProviderVoices,
-  supportsModelListing,
-  providerModels,
-  isLoadingActiveProviderModels,
-  activeProviderModelError,
-  modelSearchQuery,
-  speechProviderError,
-  ssmlEnabled,
-  availableVoices,
-} = storeToRefs(speechStore)
+// MVP: Disabled provider stores - using Inworld SDK
+// const providersStore = useProvidersStore()
+// const speechStore = useSpeechStore()
+// const { configuredSpeechProvidersMetadata } = storeToRefs(providersStore)
+const configuredSpeechProvidersMetadata = ref([])
+const activeSpeechProvider = ref('')
+const activeSpeechModel = ref('')
+const activeSpeechVoice = ref(undefined)
+const activeSpeechVoiceId = ref('')
+const pitch = ref(0)
+const isLoadingSpeechProviderVoices = ref(false)
+const supportsModelListing = ref(false)
+const providerModels = ref([])
+const isLoadingActiveProviderModels = ref(false)
+const activeProviderModelError = ref(null)
+const modelSearchQuery = ref('')
+const speechProviderError = ref(null)
+const ssmlEnabled = ref(false)
+const availableVoices = ref({})
 
 const voiceSearchQuery = ref('')
 const useSSML = ref(false)
@@ -54,78 +55,23 @@ const audioUrl = ref('')
 const audioPlayer = ref<HTMLAudioElement | null>(null)
 const errorMessage = ref('')
 
+// MVP: Disabled provider loading - using Inworld SDK
 onMounted(async () => {
-  await providersStore.loadModelsForConfiguredProviders()
-  await speechStore.loadVoicesForProvider(activeSpeechProvider.value)
+  // await providersStore.loadModelsForConfiguredProviders()
+  // await speechStore.loadVoicesForProvider(activeSpeechProvider.value)
+  console.log('[MVP] Speech settings loaded - using Inworld SDK for TTS')
 })
 
-watch(activeSpeechProvider, async () => {
-  await providersStore.loadModelsForConfiguredProviders()
-  await speechStore.loadVoicesForProvider(activeSpeechProvider.value)
-})
+// MVP: Disabled provider watching
+// watch(activeSpeechProvider, async () => {
+//   await providersStore.loadModelsForConfiguredProviders()
+//   await speechStore.loadVoicesForProvider(activeSpeechProvider.value)
+// })
 
-// Function to generate speech
+// MVP: Disabled - speech generation handled by Inworld SDK in voice chat
 async function generateTestSpeech() {
-  if (!testText.value.trim() && !useSSML.value)
-    return
-
-  if (useSSML.value && !ssmlText.value.trim())
-    return
-
-  if (!activeSpeechModel.value) {
-    console.error('No model selected')
-    return
-  }
-
-  if (!activeSpeechVoice.value) {
-    console.error('No voice selected')
-    return
-  }
-
-  const provider = await providersStore.getProviderInstance(activeSpeechProvider.value) as SpeechProviderWithExtraOptions<string, any>
-  if (!provider) {
-    console.error('Failed to initialize speech provider')
-    return
-  }
-
-  const providerConfig = providersStore.getProviderConfig(activeSpeechProvider.value)
-
-  isGenerating.value = true
-  errorMessage.value = ''
-
-  try {
-    // Stop any currently playing audio
-    if (audioUrl.value) {
-      stopTestAudio()
-    }
-
-    const input = useSSML.value
-      ? ssmlText.value
-      : speechStore.supportsSSML ? speechStore.generateSSML(testText.value, activeSpeechVoice.value, { ...providerConfig, pitch: pitch.value }) : testText.value
-
-    const response = await generateSpeech({
-      ...provider.speech(activeSpeechModel.value, providerConfig),
-      input,
-      voice: activeSpeechVoice.value.id,
-    })
-
-    // Convert the response to a blob and create an object URL
-    audioUrl.value = URL.createObjectURL(new Blob([response]))
-
-    // Play the audio
-    setTimeout(() => {
-      if (audioPlayer.value) {
-        audioPlayer.value.play()
-      }
-    }, 100)
-  }
-  catch (error) {
-    console.error('Error generating speech:', error)
-    errorMessage.value = error instanceof Error ? error.message : 'An unknown error occurred'
-  }
-  finally {
-    isGenerating.value = false
-  }
+  console.log('[MVP] Speech generation disabled - use voice chat with Inworld SDK instead')
+  errorMessage.value = 'Speech generation is handled by Inworld SDK in the voice chat interface'
 }
 
 // Function to stop audio playback

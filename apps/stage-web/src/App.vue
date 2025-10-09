@@ -133,16 +133,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Loading state while checking authentication -->
-  <div v-if="isSessionPending" class="flex h-screen w-screen items-center justify-center">
-    <div class="text-center">
-      <div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-      <p class="text-muted-foreground">Loading...</p>
+  <!-- Always render the RouterView, but show loading overlay if session is pending -->
+  <div class="relative">
+    <!-- Loading overlay (only on initial load) -->
+    <div
+      v-if="isSessionPending"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-background"
+    >
+      <div class="text-center">
+        <div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
+        <p class="text-muted-foreground">Loading...</p>
+      </div>
     </div>
-  </div>
 
-  <!-- Main app content after authentication check -->
-  <template v-else>
+    <!-- Main app content (always rendered) -->
     <StageTransitionGroup
       :primary-color="primaryColor"
       :secondary-color="secondaryColor"
@@ -162,7 +166,7 @@ onUnmounted(() => {
     <ToasterRoot @close="id => toast.dismiss(id)">
       <Toaster />
     </ToasterRoot>
-  </template>
+  </div>
 </template>
 
 <style>

@@ -19,8 +19,8 @@ service = "mirai-api-gateway"
 # Environment variables (non-sensitive) - passed to container
 [vars]
 VITE_ENVIRONMENT= "production"
-VITE_API_URL = "https://api.miraichat.app"
-VITE_WS_URL = "wss://api.miraichat.app"
+VITE_API_URL = "https://mirai-api-gateway.founder-968.workers.dev"
+VITE_WS_URL = "wss://mirai-api-gateway.founder-968.workers.dev"
 VITE_AIRI_WS_URL= ""
 LOG_LEVEL = "info"
 

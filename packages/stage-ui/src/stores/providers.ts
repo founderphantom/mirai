@@ -1745,8 +1745,9 @@ export const useProvidersStore = defineStore('providers', () => {
     }))
   }
 
+  // MVP: Disabled automatic provider validation - not needed for Inworld SDK architecture
   // Call initially and watch for changes
-  watch(providerCredentials, updateConfigurationStatus, { deep: true, immediate: true })
+  // watch(providerCredentials, updateConfigurationStatus, { deep: true, immediate: true })
 
   // Available providers (only those that are properly configured)
   const availableProviders = computed(() => Object.keys(providerMetadata).filter(providerId => configuredProviders.value[providerId]))
@@ -1816,20 +1817,21 @@ export const useProvidersStore = defineStore('providers', () => {
       }
     }
   }
+  // MVP: Disabled automatic model loading - not needed for Inworld SDK architecture
   // Watch for credential changes and refetch models accordingly
-  watch(providerCredentials, (newCreds, oldCreds) => {
-    // Determine which providers have changed credentials
-    const changedProviders = Object.keys(newCreds).filter(providerId =>
-      JSON.stringify(newCreds[providerId]) !== JSON.stringify(oldCreds?.[providerId]),
-    )
+  // watch(providerCredentials, (newCreds, oldCreds) => {
+  //   // Determine which providers have changed credentials
+  //   const changedProviders = Object.keys(newCreds).filter(providerId =>
+  //     JSON.stringify(newCreds[providerId]) !== JSON.stringify(oldCreds?.[providerId]),
+  //   )
 
-    for (const providerId of changedProviders) {
-      // If the provider is configured and has the capability, refetch its models
-      if (configuredProviders.value[providerId] && providerMetadata[providerId]?.capabilities.listModels) {
-        fetchModelsForProvider(providerId)
-      }
-    }
-  }, { deep: true })
+  //   for (const providerId of changedProviders) {
+  //     // If the provider is configured and has the capability, refetch its models
+  //     if (configuredProviders.value[providerId] && providerMetadata[providerId]?.capabilities.listModels) {
+  //       fetchModelsForProvider(providerId)
+  //     }
+  //   }
+  // }, { deep: true })
 
   // Function to get localized provider metadata
   function getProviderMetadata(providerId: string) {
