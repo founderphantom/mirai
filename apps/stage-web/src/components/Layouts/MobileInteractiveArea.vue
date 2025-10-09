@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { ChatProvider } from '@xsai-ext/shared-providers'
+// MVP: Disabled direct provider API calls - will use Inworld SDK instead
+// import type { ChatProvider } from '@xsai-ext/shared-providers'
 
-import { useMicVAD } from '@proj-airi/stage-ui/composables'
+// import { useMicVAD } from '@proj-airi/stage-ui/composables'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
-import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+// import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
+// import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea } from '@proj-airi/ui'
 import { useDark, useResizeObserver, useScreenSafeArea } from '@vueuse/core'
@@ -28,8 +29,9 @@ const listening = ref(false)
 const isComposing = ref(false)
 
 const screenSafeArea = useScreenSafeArea()
-const providersStore = useProvidersStore()
-const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
+// MVP: Disabled provider store
+// const providersStore = useProvidersStore()
+// const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
 
 useResizeObserver(document.documentElement, () => screenSafeArea.update())
 
@@ -56,13 +58,15 @@ async function handleSend() {
   }
 
   try {
-    const providerConfig = providersStore.getProviderConfig(activeProvider.value)
+    // MVP TODO: Replace with Inworld SDK sendText() call
+    console.warn('MVP: Chat sending disabled - integrate Inworld SDK')
+    // const providerConfig = providersStore.getProviderConfig(activeProvider.value)
 
-    await send(messageInput.value, {
-      chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
-      model: activeModel.value,
-      providerConfig,
-    })
+    // await send(messageInput.value, {
+    //   chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
+    //   model: activeModel.value,
+    //   providerConfig,
+    // })
   }
   catch (error) {
     messages.value.pop()
@@ -73,55 +77,59 @@ async function handleSend() {
   }
 }
 
-const { destroy, start } = useMicVAD(selectedAudioInput, {
-  onSpeechStart: () => {
-    // TODO: interrupt the playback
-    // TODO: interrupt any of the ongoing TTS
-    // TODO: interrupt any of the ongoing LLM requests
-    // TODO: interrupt any of the ongoing animation of Live2D or VRM
-    // TODO: once interrupted, we should somehow switch to listen or thinking
-    //       emotion / expression?
-    listening.value = true
-  },
-  // VAD misfire means while speech end is detected but
-  // the frames of the segment of the audio buffer
-  // is not enough to be considered as a speech segment
-  // which controlled by the `minSpeechFrames` parameter
-  onVADMisfire: () => {
-    // TODO: do audio buffer send to whisper
-    listening.value = false
-  },
-  onSpeechEnd: (buffer) => {
-    // TODO: do audio buffer send to whisper
-    listening.value = false
-    handleTranscription(buffer)
-  },
-  auto: false,
-})
+// MVP: Disabled VAD - will use Inworld SDK's built-in voice activity detection
+// const { destroy, start } = useMicVAD(selectedAudioInput, {
+//   onSpeechStart: () => {
+//     // TODO: interrupt the playback
+//     // TODO: interrupt any of the ongoing TTS
+//     // TODO: interrupt any of the ongoing LLM requests
+//     // TODO: interrupt any of the ongoing animation of Live2D or VRM
+//     // TODO: once interrupted, we should somehow switch to listen or thinking
+//     //       emotion / expression?
+//     listening.value = true
+//   },
+//   // VAD misfire means while speech end is detected but
+//   // the frames of the segment of the audio buffer
+//   // is not enough to be considered as a speech segment
+//   // which controlled by the `minSpeechFrames` parameter
+//   onVADMisfire: () => {
+//     // TODO: do audio buffer send to whisper
+//     listening.value = false
+//   },
+//   onSpeechEnd: (buffer) => {
+//     // TODO: do audio buffer send to whisper
+//     listening.value = false
+//     handleTranscription(buffer)
+//   },
+//   auto: false,
+// })
 
-function handleTranscription(_buffer: Float32Array<ArrayBufferLike>) {
-  // eslint-disable-next-line no-alert
-  alert('Transcription is not implemented yet')
-}
+// function handleTranscription(_buffer: Float32Array<ArrayBufferLike>) {
+//   // eslint-disable-next-line no-alert
+//   alert('Transcription is not implemented yet')
+// }
 
-watch(enabled, async (value) => {
-  if (value === false) {
-    destroy()
-  }
-})
+// watch(enabled, async (value) => {
+//   if (value === false) {
+//     destroy()
+//   }
+// })
 
 onAfterMessageComposed(async () => {
   messageInput.value = ''
 })
 
-watch([activeProvider, activeModel], async () => {
-  if (activeProvider.value && activeModel.value) {
-    await discoverToolsCompatibility(activeModel.value, await providersStore.getProviderInstance<ChatProvider>(activeProvider.value), [])
-  }
-})
+// MVP: Disabled provider-based tool compatibility check
+// watch([activeProvider, activeModel], async () => {
+//   if (activeProvider.value && activeModel.value) {
+//     await discoverToolsCompatibility(activeModel.value, await providersStore.getProviderInstance<ChatProvider>(activeProvider.value), [])
+//   }
+// })
 
 onMounted(() => {
-  start()
+  // MVP TODO: Initialize Inworld SDK here
+  console.log('MVP: Inworld SDK initialization placeholder')
+  // start()
   screenSafeArea.update()
 })
 </script>

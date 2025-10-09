@@ -88,14 +88,23 @@ function selectCharacter(character: Character) {
               <p v-if="user" class="user-name">Hello, {{ user.name }}!</p>
             </div>
           </div>
-          <button @click="handleSignOut" class="sign-out-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            Sign Out
-          </button>
+          <div class="header-actions">
+            <button @click="router.push('/account')" class="account-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              Account
+            </button>
+            <button @click="handleSignOut" class="sign-out-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Sign Out
+            </button>
+          </div>
         </div>
 
         <!-- Main Content -->
@@ -237,6 +246,13 @@ function selectCharacter(character: Character) {
   margin: 0;
 }
 
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.account-btn,
 .sign-out-btn {
   display: flex;
   align-items: center;
@@ -252,6 +268,7 @@ function selectCharacter(character: Character) {
   transition: all 0.2s;
 }
 
+.account-btn:hover,
 .sign-out-btn:hover {
   background-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);

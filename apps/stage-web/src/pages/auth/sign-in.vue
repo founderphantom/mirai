@@ -8,16 +8,30 @@ const email = ref('')
 const password = ref('')
 const error = ref<string | null>(null)
 const loading = ref(false)
+const showVerificationRequired = ref(false)
 
 async function handleSignIn() {
   loading.value = true
   error.value = null
+  showVerificationRequired.value = false
 
   try {
-    const { error: signInError } = await authClient.signIn.email({
-      email: email.value,
-      password: password.value,
-    })
+    const { error: signInError } = await authClient.signIn.email(
+      {
+        email: email.value,
+        password: password.value,
+      },
+      {
+        onError: (ctx) => {
+          // Handle email not verified error (403)
+          if (ctx.error.status === 403) {
+            showVerificationRequired.value = true
+            error.value = null
+            return
+          }
+        },
+      }
+    )
 
     if (signInError) {
       error.value = signInError.message || 'Sign in failed'
@@ -29,6 +43,25 @@ async function handleSignIn() {
   } catch (err) {
     error.value = 'An unexpected error occurred'
     console.error('Sign in error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function resendVerificationEmail() {
+  loading.value = true
+  error.value = null
+
+  try {
+    await authClient.sendVerificationEmail({
+      email: email.value,
+      callbackURL: '/dashboard',
+    })
+
+    alert('Verification email sent! Please check your inbox.')
+  } catch (err) {
+    error.value = 'Failed to resend verification email'
+    console.error('Resend verification error:', err)
   } finally {
     loading.value = false
   }
@@ -70,12 +103,41 @@ async function signInWithDiscord() {
 <template>
   <div class="auth-page">
     <div class="auth-container">
-      <div class="auth-header">
-        <h1>Welcome Back</h1>
-        <p>Sign in to continue to Mirai</p>
+      <!-- Email Verification Required Message -->
+      <div v-if="showVerificationRequired" class="verification-required">
+        <div class="warning-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <h1>Email Not Verified</h1>
+        <p>Please verify your email address before signing in.</p>
+        <p class="email-display">{{ email }}</p>
+
+        <div class="verification-actions">
+          <button @click="resendVerificationEmail" :disabled="loading" class="resend-btn">
+            {{ loading ? 'Sending...' : 'Resend Verification Email' }}
+          </button>
+          <button @click="showVerificationRequired = false" class="back-btn">
+            Back to Sign In
+          </button>
+        </div>
+
+        <div v-if="error" class="error-message">
+          {{ error }}
+        </div>
       </div>
 
-      <form @submit.prevent="handleSignIn" class="auth-form">
+      <!-- Sign In Form -->
+      <div v-else>
+        <div class="auth-header">
+          <h1>Welcome Back</h1>
+          <p>Sign in to continue to Mirai</p>
+        </div>
+
+        <form @submit.prevent="handleSignIn" class="auth-form">
         <div class="form-group">
           <label for="email">Email</label>
           <input
@@ -132,11 +194,12 @@ async function signInWithDiscord() {
         </button>
       </div>
 
-      <div class="auth-footer">
-        <p>
-          Don't have an account?
-          <router-link to="/auth/sign-up">Sign Up</router-link>
-        </p>
+        <div class="auth-footer">
+          <p>
+            Don't have an account?
+            <router-link to="/auth/sign-up">Sign Up</router-link>
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -334,5 +397,94 @@ async function signInWithDiscord() {
 
 .discord-btn:hover:not(:disabled) svg {
   fill: white;
+}
+
+.verification-required {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.warning-icon {
+  display: inline-block;
+  color: #f59e0b;
+  margin-bottom: 1.5rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+.verification-required h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  color: #1a202c;
+}
+
+.verification-required p {
+  color: #4a5568;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.email-display {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 1.1rem;
+  margin-top: 1rem;
+}
+
+.verification-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.resend-btn {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.resend-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.resend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.back-btn {
+  padding: 0.75rem 1.5rem;
+  background-color: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background-color: #f7fafc;
+  transform: translateY(-1px);
 }
 </style>

@@ -46,6 +46,7 @@ ENVIRONMENT = "production"
 # BETTER_AUTH_URL should match your production domain
 # Use custom domain if available, otherwise use workers.dev URL
 BETTER_AUTH_URL = "https://mirai-api-gateway.founder-968.workers.dev"
+FRONTEND_URL = "https://mirai-stage-web.founder-968.workers.dev"
 
 # Required Secrets (set with: wrangler secret put SECRET_NAME)
 # See AUTHENTICATION_SETUP.md in project root for detailed instructions

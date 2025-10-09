@@ -23,6 +23,7 @@ export interface Env {
   ENVIRONMENT: string
   BETTER_AUTH_URL: string
   BETTER_AUTH_SECRET: string
+  FRONTEND_URL: string  // Frontend app URL for email verification links
 
   // OAuth Credentials
   GOOGLE_CLIENT_ID: string
@@ -38,6 +39,9 @@ export interface Env {
   // Inworld Configuration
   INWORLD_API_KEY: string
   INWORLD_WORKSPACE_ID: string
+
+  // Email Service (Resend)
+  RESEND_API_KEY: string
 }
 
 /**

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onBeforeUnmount, onMounted, onUnmounted } from 'vue'
 import { authClient } from '@/lib/auth'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 
 const router = useRouter()
 const name = ref('')
@@ -10,6 +10,27 @@ const password = ref('')
 const confirmPassword = ref('')
 const error = ref<string | null>(null)
 const loading = ref(false)
+const showVerificationMessage = ref(false)
+
+// Debug: Track component lifecycle
+onMounted(() => {
+  console.log('[SIGNUP] Component mounted')
+})
+
+onUnmounted(() => {
+  console.log('[SIGNUP] Component unmounted - showVerificationMessage was:', showVerificationMessage.value)
+})
+
+// Prevent navigation away from this page when showing verification message
+onBeforeRouteLeave((to, from, next) => {
+  console.log('[SIGNUP] onBeforeRouteLeave called, showVerificationMessage:', showVerificationMessage.value, 'to:', to.path)
+  if (showVerificationMessage.value) {
+    console.log('[SIGNUP] Blocking navigation to:', to.path)
+    next(false) // Block navigation
+  } else {
+    next() // Allow navigation
+  }
+})
 
 async function handleSignUp() {
   loading.value = true
@@ -23,22 +44,47 @@ async function handleSignUp() {
   }
 
   try {
-    const { error: signUpError } = await authClient.signUp.email({
+    console.log('[SIGNUP] Starting signup request...')
+    const response = await authClient.signUp.email({
       email: email.value,
       password: password.value,
       name: name.value,
     })
 
-    if (signUpError) {
-      error.value = signUpError.message || 'Sign up failed'
+    console.log('[SIGNUP] Response received:', response)
+
+    if (response.error) {
+      console.log('[SIGNUP] Error in response:', response.error)
+      error.value = response.error.message || 'Sign up failed'
       return
     }
 
-    // Success - redirect to dashboard
-    router.push('/dashboard')
+    console.log('[SIGNUP] Success! Setting showVerificationMessage to true')
+    // Success - show verification message instead of redirecting
+    showVerificationMessage.value = true
+    console.log('[SIGNUP] showVerificationMessage is now:', showVerificationMessage.value)
   } catch (err) {
+    console.error('[SIGNUP] Exception caught:', err)
     error.value = 'An unexpected error occurred'
-    console.error('Sign up error:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function resendVerificationEmail() {
+  loading.value = true
+  error.value = null
+
+  try {
+    await authClient.sendVerificationEmail({
+      email: email.value,
+      callbackURL: '/dashboard',
+    })
+
+    alert('Verification email sent! Please check your inbox.')
+  } catch (err) {
+    error.value = 'Failed to resend verification email'
+    console.error('Resend verification error:', err)
   } finally {
     loading.value = false
   }
@@ -80,12 +126,43 @@ async function signUpWithDiscord() {
 <template>
   <div class="auth-page">
     <div class="auth-container">
-      <div class="auth-header">
-        <h1>Create Account</h1>
-        <p>Sign up to get started with Mirai</p>
+      <!-- Verification Success Message -->
+      <div v-if="showVerificationMessage" class="verification-container">
+        <div class="success-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
+        <h1>Check Your Email</h1>
+        <p>We've sent a verification email to <strong>{{ email }}</strong></p>
+        <p class="verification-instructions">
+          Click the verification link in the email to activate your account.
+          The link will expire in 24 hours.
+        </p>
+
+        <div class="verification-actions">
+          <button @click="resendVerificationEmail" :disabled="loading" class="resend-btn">
+            {{ loading ? 'Sending...' : 'Resend Verification Email' }}
+          </button>
+          <router-link to="/auth/sign-in" class="back-to-login">
+            Back to Sign In
+          </router-link>
+        </div>
+
+        <div v-if="error" class="error-message">
+          {{ error }}
+        </div>
       </div>
 
-      <form @submit.prevent="handleSignUp" class="auth-form">
+      <!-- Sign Up Form -->
+      <div v-else>
+        <div class="auth-header">
+          <h1>Create Account</h1>
+          <p>Sign up to get started with Mirai</p>
+        </div>
+
+        <form @submit.prevent="handleSignUp" class="auth-form">
         <div class="form-group">
           <label for="name">Name</label>
           <input
@@ -168,11 +245,12 @@ async function signUpWithDiscord() {
         </button>
       </div>
 
-      <div class="auth-footer">
-        <p>
-          Already have an account?
-          <router-link to="/auth/sign-in">Sign In</router-link>
-        </p>
+        <div class="auth-footer">
+          <p>
+            Already have an account?
+            <router-link to="/auth/sign-in">Sign In</router-link>
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -370,5 +448,94 @@ async function signUpWithDiscord() {
 
 .discord-btn:hover:not(:disabled) svg {
   fill: white;
+}
+
+.verification-container {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.success-icon {
+  display: inline-block;
+  color: #10b981;
+  margin-bottom: 1.5rem;
+  animation: checkmark 0.5s ease-in-out;
+}
+
+@keyframes checkmark {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.verification-container h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  color: #1a202c;
+}
+
+.verification-container p {
+  color: #4a5568;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.verification-instructions {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f0f9ff;
+  border-left: 4px solid #667eea;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.verification-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.resend-btn {
+  padding: 0.75rem 1.5rem;
+  background-color: white;
+  color: #667eea;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.resend-btn:hover:not(:disabled) {
+  background-color: #667eea;
+  color: white;
+  transform: translateY(-2px);
+}
+
+.resend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.back-to-login {
+  display: inline-block;
+  color: #667eea;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.5rem;
+}
+
+.back-to-login:hover {
+  text-decoration: underline;
 }
 </style>

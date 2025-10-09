@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import type { ChatProvider } from '@xsai-ext/shared-providers'
+// MVP: Disabled direct provider API calls - will use Inworld SDK instead
+// import type { ChatProvider } from '@xsai-ext/shared-providers'
 
-import WhisperWorker from '@proj-airi/stage-ui/libs/workers/worker?worker&url'
+// import WhisperWorker from '@proj-airi/stage-ui/libs/workers/worker?worker&url'
 
-import { toWAVBase64 } from '@proj-airi/audio'
-import { useMicVAD, useWhisper } from '@proj-airi/stage-ui/composables'
+// import { toWAVBase64 } from '@proj-airi/audio'
+// import { useMicVAD, useWhisper } from '@proj-airi/stage-ui/composables'
 import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
-import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+// import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
+// import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea } from '@proj-airi/ui'
 import { useDark } from '@vueuse/core'
@@ -23,8 +24,9 @@ const listening = ref(false)
 const showMicrophoneSelect = ref(false)
 const isComposing = ref(false)
 
-const providersStore = useProvidersStore()
-const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
+// MVP: Disabled provider store - will integrate with Inworld SDK
+// const providersStore = useProvidersStore()
+// const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
 
 const { askPermission } = useSettingsAudioDevice()
@@ -36,21 +38,22 @@ const { t } = useI18n()
 
 const isDark = useDark({ disableTransition: false })
 
-const { transcribe: generate, terminate } = useWhisper(WhisperWorker, {
-  onComplete: async (res) => {
-    if (!res || !res.trim()) {
-      return
-    }
+// MVP: Disabled Whisper transcription - will use Inworld's built-in STT
+// const { transcribe: generate, terminate } = useWhisper(WhisperWorker, {
+//   onComplete: async (res) => {
+//     if (!res || !res.trim()) {
+//       return
+//     }
 
-    const providerConfig = providersStore.getProviderConfig(activeProvider.value)
+//     const providerConfig = providersStore.getProviderConfig(activeProvider.value)
 
-    await send(res, {
-      chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
-      model: activeModel.value,
-      providerConfig,
-    })
-  },
-})
+//     await send(res, {
+//       chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
+//       model: activeModel.value,
+//       providerConfig,
+//     })
+//   },
+// })
 
 async function handleSend() {
   if (!messageInput.value.trim() || isComposing.value) {
@@ -58,13 +61,15 @@ async function handleSend() {
   }
 
   try {
-    const providerConfig = providersStore.getProviderConfig(activeProvider.value)
+    // MVP TODO: Replace with Inworld SDK sendText() call
+    console.warn('MVP: Chat sending disabled - integrate Inworld SDK')
+    // const providerConfig = providersStore.getProviderConfig(activeProvider.value)
 
-    await send(messageInput.value, {
-      chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
-      model: activeModel.value,
-      providerConfig,
-    })
+    // await send(messageInput.value, {
+    //   chatProvider: await providersStore.getProviderInstance(activeProvider.value) as ChatProvider,
+    //   model: activeModel.value,
+    //   providerConfig,
+    // })
   }
   catch (error) {
     messages.value.pop()
@@ -75,62 +80,66 @@ async function handleSend() {
   }
 }
 
-const { destroy, start } = useMicVAD(selectedAudioInput, {
-  onSpeechStart: () => {
-    // TODO: interrupt the playback
-    // TODO: interrupt any of the ongoing TTS
-    // TODO: interrupt any of the ongoing LLM requests
-    // TODO: interrupt any of the ongoing animation of Live2D or VRM
-    // TODO: once interrupted, we should somehow switch to listen or thinking
-    //       emotion / expression?
-    listening.value = true
-  },
-  // VAD misfire means while speech end is detected but
-  // the frames of the segment of the audio buffer
-  // is not enough to be considered as a speech segment
-  // which controlled by the `minSpeechFrames` parameter
-  onVADMisfire: () => {
-    // TODO: do audio buffer send to whisper
-    listening.value = false
-  },
-  onSpeechEnd: (buffer) => {
-    // TODO: do audio buffer send to whisper
-    listening.value = false
-    handleTranscription(buffer.buffer)
-  },
-  auto: false,
-})
+// MVP: Disabled VAD - will use Inworld SDK's built-in voice activity detection
+// const { destroy, start } = useMicVAD(selectedAudioInput, {
+//   onSpeechStart: () => {
+//     // TODO: interrupt the playback
+//     // TODO: interrupt any of the ongoing TTS
+//     // TODO: interrupt any of the ongoing LLM requests
+//     // TODO: interrupt any of the ongoing animation of Live2D or VRM
+//     // TODO: once interrupted, we should somehow switch to listen or thinking
+//     //       emotion / expression?
+//     listening.value = true
+//   },
+//   // VAD misfire means while speech end is detected but
+//   // the frames of the segment of the audio buffer
+//   // is not enough to be considered as a speech segment
+//   // which controlled by the `minSpeechFrames` parameter
+//   onVADMisfire: () => {
+//     // TODO: do audio buffer send to whisper
+//     listening.value = false
+//   },
+//   onSpeechEnd: (buffer) => {
+//     // TODO: do audio buffer send to whisper
+//     listening.value = false
+//     handleTranscription(buffer.buffer)
+//   },
+//   auto: false,
+// })
 
-async function handleTranscription(buffer: ArrayBufferLike) {
-  await audioContext.resume()
+// async function handleTranscription(buffer: ArrayBufferLike) {
+//   await audioContext.resume()
 
-  // Convert Float32Array to WAV format
-  const audioBase64 = await toWAVBase64(buffer, audioContext.sampleRate)
-  generate({ type: 'generate', data: { audio: audioBase64, language: 'en' } })
-}
+//   // Convert Float32Array to WAV format
+//   const audioBase64 = await toWAVBase64(buffer, audioContext.sampleRate)
+//   generate({ type: 'generate', data: { audio: audioBase64, language: 'en' } })
+// }
 
-watch(enabled, async (value) => {
-  if (value === false) {
-    destroy()
-    terminate()
-  }
-})
+// watch(enabled, async (value) => {
+//   if (value === false) {
+//     destroy()
+//     terminate()
+//   }
+// })
 
-watch(showMicrophoneSelect, async (value) => {
-  if (value) {
-    await askPermission()
-  }
-})
+// watch(showMicrophoneSelect, async (value) => {
+//   if (value) {
+//     await askPermission()
+//   }
+// })
 
-watch([activeProvider, activeModel], async () => {
-  if (activeProvider.value && activeModel.value) {
-    await discoverToolsCompatibility(activeModel.value, await providersStore.getProviderInstance<ChatProvider>(activeProvider.value), [])
-  }
-})
+// MVP: Disabled provider-based tool compatibility check
+// watch([activeProvider, activeModel], async () => {
+//   if (activeProvider.value && activeModel.value) {
+//     await discoverToolsCompatibility(activeModel.value, await providersStore.getProviderInstance<ChatProvider>(activeProvider.value), [])
+//   }
+// })
 
 onMounted(() => {
+  // MVP TODO: Initialize Inworld SDK here
+  console.log('MVP: Inworld SDK initialization placeholder')
   // loadWhisper()
-  start()
+  // start()
 })
 
 onAfterMessageComposed(async () => {

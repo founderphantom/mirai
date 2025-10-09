@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { PageHeader } from '@proj-airi/stage-ui/components'
-import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+// MVP: Disabled provider store to prevent direct API calls to external services
+// import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
 import { useDark } from '@vueuse/core'
-import { storeToRefs } from 'pinia'
+// import { storeToRefs } from 'pinia'
 import { computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute } from 'vue-router'
@@ -14,8 +15,10 @@ import { themeColorFromValue, useThemeColor } from '../composables/theme-color'
 const route = useRoute()
 const dark = useDark()
 const { t } = useI18n()
-const providersStore = useProvidersStore()
-const { allProvidersMetadata } = storeToRefs(providersStore)
+// MVP: Disabled provider store
+// const providersStore = useProvidersStore()
+// const { allProvidersMetadata } = storeToRefs(providersStore)
+const allProvidersMetadata = { value: [] }
 
 const routeHeaderMetadataMap = computed(() => {
   const map: Record<string, { subtitle?: string, title: string }> = {

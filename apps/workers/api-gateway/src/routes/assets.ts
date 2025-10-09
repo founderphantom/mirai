@@ -10,6 +10,71 @@ import type { HonoEnv } from '../types/env'
 const assetRoutes = new Hono<HonoEnv>()
 
 /**
+ * POST /api/assets/avatar
+ * Upload user avatar to R2
+ */
+assetRoutes.post('/avatar', async (c) => {
+  const user = c.get('user')
+  if (!user) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  try {
+    const formData = await c.req.formData()
+    const file = formData.get('avatar') as File
+
+    if (!file) {
+      return c.json({ error: 'No file provided' }, 400)
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      return c.json({ error: 'File must be an image' }, 400)
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      return c.json({ error: 'File size must be less than 5MB' }, 400)
+    }
+
+    // Generate R2 key for avatar
+    const timestamp = Date.now()
+    const extension = file.name.split('.').pop()
+    const key = `users/${user.id}/avatar/${timestamp}.${extension}`
+
+    // Upload to R2
+    await c.env.USER_ASSETS.put(key, file.stream(), {
+      httpMetadata: {
+        contentType: file.type,
+      },
+      customMetadata: {
+        userId: user.id,
+        assetType: 'avatar',
+      },
+    })
+
+    // Generate public URL for the avatar
+    const url = `/api/assets/${key}`
+
+    return c.json({
+      key,
+      url,
+      size: file.size,
+      type: file.type,
+    })
+  } catch (error) {
+    console.error('[ASSETS] Avatar upload error:', error)
+    return c.json(
+      {
+        error: 'Failed to upload avatar',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      500,
+    )
+  }
+})
+
+/**
  * POST /api/assets/upload
  * Upload an asset to R2
  */

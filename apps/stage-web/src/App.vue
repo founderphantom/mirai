@@ -82,14 +82,29 @@ watch(
     const isPublicRoute = publicRoutes.includes(currentPath)
     const isAuthRoute = authRoutes.includes(currentPath)
 
-    // Redirect authenticated users from landing page to dashboard
-    if (authenticated && currentPath === '/') {
+    // Check if email is verified (if user exists)
+    const emailVerified = session.value?.user?.emailVerified ?? false
+
+    // Debug logging
+    if (authenticated && isAuthRoute) {
+      console.log('[APP] Auth watcher triggered:', {
+        authenticated,
+        emailVerified,
+        currentPath,
+        willRedirect: emailVerified
+      })
+    }
+
+    // Redirect authenticated users from landing page to dashboard (only if email verified)
+    if (authenticated && emailVerified && currentPath === '/') {
+      console.log('[APP] Redirecting from landing to dashboard')
       router.push('/dashboard')
       return
     }
 
-    // Redirect authenticated users from auth pages to dashboard
-    if (authenticated && isAuthRoute) {
+    // Redirect authenticated users from auth pages to dashboard (only if email verified)
+    if (authenticated && emailVerified && isAuthRoute) {
+      console.log('[APP] Redirecting from auth page to dashboard')
       const redirect = router.currentRoute.value.query.redirect as string
       router.push(redirect || '/dashboard')
       return
