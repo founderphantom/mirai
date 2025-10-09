@@ -85,18 +85,6 @@ const settings = computed(() => [
     to: '/settings/models',
   },
   {
-    title: t('settings.pages.memory.title'),
-    description: t('settings.pages.memory.description'),
-    icon: 'i-solar:leaf-bold-duotone',
-    to: '/settings/memory',
-  },
-  {
-    title: t('settings.pages.providers.title'),
-    description: t('settings.pages.providers.description'),
-    icon: 'i-solar:box-minimalistic-bold-duotone',
-    to: '/settings/providers',
-  },
-  {
     title: t('settings.pages.system.title'),
     description: t('settings.pages.system.description'),
     icon: 'i-solar:filters-bold-duotone',

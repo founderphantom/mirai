@@ -5,26 +5,36 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-const settings = computed(() => [
-  {
-    title: t('settings.pages.system.general.title'),
-    description: t('settings.pages.system.general.description'),
-    icon: 'i-solar:emoji-funny-square-bold-duotone',
-    to: '/settings/system/general',
-  },
-  {
-    title: t('settings.pages.system.color-scheme.title'),
-    description: t('settings.pages.system.color-scheme.description'),
-    icon: 'i-solar:pallete-2-bold-duotone',
-    to: '/settings/system/color-scheme',
-  },
-  {
-    title: t('settings.pages.system.developer.title'),
-    description: t('settings.pages.system.developer.description'),
-    icon: 'i-solar:code-bold-duotone',
-    to: '/settings/system/developer',
-  },
-])
+const isDevelopment = import.meta.env.DEV
+
+const settings = computed(() => {
+  const baseSettings = [
+    {
+      title: t('settings.pages.system.general.title'),
+      description: t('settings.pages.system.general.description'),
+      icon: 'i-solar:emoji-funny-square-bold-duotone',
+      to: '/settings/system/general',
+    },
+    {
+      title: t('settings.pages.system.color-scheme.title'),
+      description: t('settings.pages.system.color-scheme.description'),
+      icon: 'i-solar:pallete-2-bold-duotone',
+      to: '/settings/system/color-scheme',
+    },
+  ]
+
+  // Only add Developer option in development environment
+  if (isDevelopment) {
+    baseSettings.push({
+      title: t('settings.pages.system.developer.title'),
+      description: t('settings.pages.system.developer.description'),
+      icon: 'i-solar:code-bold-duotone',
+      to: '/settings/system/developer',
+    })
+  }
+
+  return baseSettings
+})
 </script>
 
 <template>

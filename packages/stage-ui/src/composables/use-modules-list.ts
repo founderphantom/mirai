@@ -2,7 +2,6 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useBeatSyncStore } from '../stores/beat-sync'
-import { useConsciousnessStore } from '../stores/modules/consciousness'
 import { useDiscordStore } from '../stores/modules/discord'
 import { useFactorioStore } from '../stores/modules/gaming-factorio'
 import { useMinecraftStore } from '../stores/modules/gaming-minecraft'
@@ -25,7 +24,6 @@ export function useModulesList() {
   const { t } = useI18n()
 
   // Initialize stores
-  const consciousnessStore = useConsciousnessStore()
   const speechStore = useSpeechStore()
   const discordStore = useDiscordStore()
   const twitterStore = useTwitterStore()
@@ -35,57 +33,12 @@ export function useModulesList() {
 
   const modulesList = computed<Module[]>(() => [
     {
-      id: 'consciousness',
-      name: t('settings.pages.modules.consciousness.title'),
-      description: t('settings.pages.modules.consciousness.description'),
-      icon: 'i-solar:ghost-bold-duotone',
-      to: '/settings/modules/consciousness',
-      configured: consciousnessStore.configured,
-      category: 'essential',
-    },
-    {
       id: 'speech',
       name: t('settings.pages.modules.speech.title'),
       description: t('settings.pages.modules.speech.description'),
       icon: 'i-solar:user-speak-rounded-bold-duotone',
       to: '/settings/modules/speech',
       configured: speechStore.configured,
-      category: 'essential',
-    },
-    {
-      id: 'hearing',
-      name: t('settings.pages.modules.hearing.title'),
-      description: t('settings.pages.modules.hearing.description'),
-      icon: 'i-solar:microphone-3-bold-duotone',
-      to: '',
-      configured: false,
-      category: 'essential',
-    },
-    {
-      id: 'vision',
-      name: t('settings.pages.modules.vision.title'),
-      description: t('settings.pages.modules.vision.description'),
-      icon: 'i-solar:eye-closed-bold-duotone',
-      to: '',
-      configured: false,
-      category: 'essential',
-    },
-    {
-      id: 'memory-short-term',
-      name: t('settings.pages.modules.memory-short-term.title'),
-      description: t('settings.pages.modules.memory-short-term.description'),
-      icon: 'i-solar:bookmark-bold-duotone',
-      to: '/settings/modules/memory-short-term',
-      configured: false,
-      category: 'essential',
-    },
-    {
-      id: 'memory-long-term',
-      name: t('settings.pages.modules.memory-long-term.title'),
-      description: t('settings.pages.modules.memory-long-term.description'),
-      icon: 'i-solar:book-bookmark-bold-duotone',
-      to: '/settings/modules/memory-long-term',
-      configured: false,
       category: 'essential',
     },
     {
