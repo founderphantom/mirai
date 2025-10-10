@@ -4,21 +4,29 @@ import { useLive2d } from '@proj-airi/stage-ui/stores/live2d'
 import { breakpointsTailwind, useBreakpoints, useDark, useMouse } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import Cross from '../../components/Backgrounds/Cross.vue'
 import Header from '../../components/Layouts/Header.vue'
-import InteractiveArea from '../../components/Layouts/InteractiveArea.vue'
 import MobileHeader from '../../components/Layouts/MobileHeader.vue'
-import MobileInteractiveArea from '../../components/Layouts/MobileInteractiveArea.vue'
 import AnimatedWave from '../../components/Widgets/AnimatedWave.vue'
+import VoiceChat from '../../components/VoiceChat.vue'
 
 import { themeColorFromPropertyOf, useThemeColor } from '../../composables/theme-color'
+import { getMVPCharacter } from '../../services/api/characters'
+import type { Character } from '../../services/api/characters'
 
+const router = useRouter()
 const dark = useDark()
 const paused = ref(false)
 
-function handleSettingsOpen(open: boolean) {
-  paused.value = open
+// Voice chat integration
+const character = ref<Character>(getMVPCharacter())
+const showVoiceChat = ref(true)
+
+function handleChatClose() {
+  showVoiceChat.value = false
+  router.push('/dashboard')
 }
 
 const positionCursor = useMouse()
@@ -58,8 +66,12 @@ onMounted(() => updateThemeColor())
             :y-offset="positionInPercentageString.y"
             :scale="scale"
           />
-          <InteractiveArea v-if="!isMobile" h="85dvh" absolute right-4 flex flex-1 flex-col max-w="500px" min-w="30%" />
-          <MobileInteractiveArea v-if="isMobile" @settings-open="handleSettingsOpen" />
+          <div v-if="showVoiceChat && character" h="85dvh" absolute right-4 flex flex-1 flex-col max-w="500px" min-w="30%">
+            <VoiceChat
+              :character="character"
+              @close="handleChatClose"
+            />
+          </div>
         </div>
       </div>
     </AnimatedWave>
