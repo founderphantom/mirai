@@ -12,7 +12,7 @@
  *   - Container receives INWORLD_API_KEY via X-Inworld-API-Key header
  */
 
-import { Container } from '@cloudflare/containers'
+import { Container, getContainer } from '@cloudflare/containers'
 
 /**
  * Voice Agent Container class
@@ -31,7 +31,7 @@ export class VoiceAgentContainer extends Container {
  * NOTE: Secrets are managed by api-gateway, not this worker
  */
 export interface Env {
-  VOICE_AGENT: Container
+  VOICE_AGENT: DurableObjectNamespace<VoiceAgentContainer>  // Durable Object namespace for container
 
   // Environment variables
   NODE_ENV: string
@@ -53,6 +53,9 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname
+    const startTime = Date.now()
+
+    console.log(`[WORKER] Incoming request: ${request.method} ${path}`)
 
     try {
       // Verify request comes from api-gateway
@@ -61,7 +64,7 @@ export default {
       const inworldApiKey = request.headers.get('X-Inworld-API-Key')
 
       if (!userId || !inworldApiKey) {
-        console.error('Missing required headers from api-gateway')
+        console.error('[WORKER] Missing required headers from api-gateway')
         return new Response(JSON.stringify({
           error: 'Invalid request',
           message: 'This endpoint must be called via api-gateway',
@@ -85,9 +88,23 @@ export default {
 
       // All requests are proxied to container
       // Container will extract X-Inworld-API-Key and X-User-ID headers
-      return env.VOICE_AGENT.fetch(request)
+      console.log(`[WORKER] Proxying ${request.method} ${path} to container`)
+
+      const containerInstance = getContainer(env.VOICE_AGENT)
+      const response = await containerInstance.fetch(request)
+
+      const duration = Date.now() - startTime
+      console.log(`[WORKER] Container response: ${response.status} (${duration}ms)`)
+
+      return response
     } catch (error) {
-      console.error('Worker error:', error)
+      const duration = Date.now() - startTime
+      console.error('[WORKER] Worker error:', {
+        error,
+        message: error instanceof Error ? error.message : String(error),
+        duration,
+        path,
+      })
       return new Response(JSON.stringify({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',

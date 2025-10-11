@@ -31,6 +31,7 @@ class_name = "VoiceSession"
 script_name = "mirai-api-gateway"
 
 # Service Binding - Voice Agent Worker
+# Binds to the worker, which internally proxies to its container
 [[services]]
 binding = "VOICE_AGENT"
 service = "voice-agent-container"
@@ -43,6 +44,7 @@ new_sqlite_classes = ["VoiceSession"]
 # Environment Variables
 [vars]
 ENVIRONMENT = "production"
+LOG_LEVEL = "debug"
 # BETTER_AUTH_URL should match your production domain
 # Use custom domain if available, otherwise use workers.dev URL
 BETTER_AUTH_URL = "https://mirai-api-gateway.founder-968.workers.dev"
@@ -64,3 +66,4 @@ FRONTEND_URL = "https://mirai-stage-web.founder-968.workers.dev"
 
 [observability]
 enabled = true
+head_sampling_rate = 1.0

@@ -98,10 +98,16 @@ async function startSession() {
 
     await voiceClient.value.connect(session.websocketUrl)
 
-    // 3. Start audio capture
-    await voiceClient.value.startAudioCapture()
+    // 3. Wait for WebSocket to be fully established
+    console.log('[VoiceChat] WebSocket connected, waiting 500ms before starting audio...')
+    await new Promise(resolve => setTimeout(resolve, 500))
 
-    // 4. Start audio level monitoring
+    // 4. Start audio capture
+    console.log('[VoiceChat] Starting audio capture...')
+    await voiceClient.value.startAudioCapture()
+    console.log('[VoiceChat] Audio capture started successfully')
+
+    // 5. Start audio level monitoring
     startAudioMonitoring()
   }
   catch (err) {

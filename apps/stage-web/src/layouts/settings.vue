@@ -18,7 +18,8 @@ const { t } = useI18n()
 // MVP: Disabled provider store
 // const providersStore = useProvidersStore()
 // const { allProvidersMetadata } = storeToRefs(providersStore)
-const allProvidersMetadata = { value: [] }
+// Temporary mock until Inworld SDK integration is complete
+const allProvidersMetadata = { value: [] as Array<{ id: string; nameKey: string }> }
 
 const routeHeaderMetadataMap = computed(() => {
   const map: Record<string, { subtitle?: string, title: string }> = {

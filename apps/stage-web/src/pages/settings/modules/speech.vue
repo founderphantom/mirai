@@ -21,30 +21,54 @@ import {
 } from '@proj-airi/ui'
 // import { generateSpeech } from '@xsai/generate-speech'
 // import { storeToRefs } from 'pinia'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
+
+// Type definitions for MVP mock data
+interface ProviderMetadata {
+  id: string
+  localizedName?: string
+  localizedDescription?: string
+}
+
+interface Voice {
+  id: string
+  name: string
+  description: string
+  previewURL: string
+  languages: Array<{ code: string; title: string }>
+  provider: string
+  gender: string
+  compatibleModels?: string[]
+}
+
+interface Model {
+  id: string
+  name: string
+  description?: string
+}
 
 const { t } = useI18n()
 // MVP: Disabled provider stores - using Inworld SDK
 // const providersStore = useProvidersStore()
 // const speechStore = useSpeechStore()
 // const { configuredSpeechProvidersMetadata } = storeToRefs(providersStore)
-const configuredSpeechProvidersMetadata = ref([])
+const configuredSpeechProvidersMetadata = ref<ProviderMetadata[]>([])
 const activeSpeechProvider = ref('')
 const activeSpeechModel = ref('')
-const activeSpeechVoice = ref(undefined)
+const activeSpeechVoice = ref<Voice | undefined>(undefined)
 const activeSpeechVoiceId = ref('')
 const pitch = ref(0)
 const isLoadingSpeechProviderVoices = ref(false)
 const supportsModelListing = ref(false)
-const providerModels = ref([])
+const providerModels = ref<Model[]>([])
 const isLoadingActiveProviderModels = ref(false)
-const activeProviderModelError = ref(null)
+const activeProviderModelError = ref<Error | null>(null)
 const modelSearchQuery = ref('')
-const speechProviderError = ref(null)
+const speechProviderError = ref<Error | null>(null)
 const ssmlEnabled = ref(false)
-const availableVoices = ref({})
+const availableVoices = ref<Record<string, Voice[]>>({})
 
 const voiceSearchQuery = ref('')
 const useSSML = ref(false)

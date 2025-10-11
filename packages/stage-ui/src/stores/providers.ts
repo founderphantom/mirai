@@ -51,7 +51,7 @@ import {
   createUnVolcengine,
   listVoices,
 } from 'unspeech'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { isUrl } from '../utils/url'
@@ -1733,21 +1733,9 @@ export const useProvidersStore = defineStore('providers', () => {
   // Initialize all providers
   Object.keys(providerMetadata).forEach(initializeProvider)
 
-  // Update configuration status for all providers
-  async function updateConfigurationStatus() {
-    await Promise.all(Object.keys(providerMetadata).map(async (providerId) => {
-      try {
-        configuredProviders.value[providerId] = await validateProvider(providerId)
-      }
-      catch {
-        configuredProviders.value[providerId] = false
-      }
-    }))
-  }
-
   // MVP: Disabled automatic provider validation - not needed for Inworld SDK architecture
-  // Call initially and watch for changes
-  // watch(providerCredentials, updateConfigurationStatus, { deep: true, immediate: true })
+  // The updateConfigurationStatus function and watch have been removed as they are not needed
+  // for the Inworld SDK architecture
 
   // Available providers (only those that are properly configured)
   const availableProviders = computed(() => Object.keys(providerMetadata).filter(providerId => configuredProviders.value[providerId]))

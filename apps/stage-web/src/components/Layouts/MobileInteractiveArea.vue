@@ -6,11 +6,12 @@
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 // import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 // import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
-import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
+import { useSettings } from '@proj-airi/stage-ui/stores/settings'
+// import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea } from '@proj-airi/ui'
 import { useDark, useResizeObserver, useScreenSafeArea } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref, useTemplateRef, watch } from 'vue'
+import { onMounted, ref, useTemplateRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
@@ -25,7 +26,6 @@ const viewControlsActiveMode = ref<'x' | 'y' | 'z' | 'scale'>('scale')
 const viewControlsInputsRef = useTemplateRef<InstanceType<typeof ViewControlInputs>>('viewControlsInputs')
 
 const messageInput = ref('')
-const listening = ref(false)
 const isComposing = ref(false)
 
 const screenSafeArea = useScreenSafeArea()
@@ -35,10 +35,11 @@ const screenSafeArea = useScreenSafeArea()
 
 useResizeObserver(document.documentElement, () => screenSafeArea.update())
 
+// MVP: Disabled audio device settings - will use Inworld SDK
 // const { askPermission } = useSettingsAudioDevice()
+// const { enabled, selectedAudioInput } = storeToRefs(useSettingsAudioDevice())
 const { themeColorsHueDynamic, stageViewControlsEnabled } = storeToRefs(useSettings())
-const { enabled, selectedAudioInput } = storeToRefs(useSettingsAudioDevice())
-const { send, onAfterMessageComposed, discoverToolsCompatibility, cleanupMessages } = useChatStore()
+const { onAfterMessageComposed, cleanupMessages } = useChatStore()
 const { messages } = storeToRefs(useChatStore())
 const { t } = useI18n()
 

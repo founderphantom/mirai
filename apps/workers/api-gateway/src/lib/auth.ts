@@ -283,7 +283,8 @@ export function createAuth(env: Env) {
         createCustomerOnSignUp: true,
         use: [
           checkout({
-            organizationId: env.POLAR_ORGANIZATION_ID,
+            // Note: Products and successUrl will be provided when calling checkout from client
+            // organizationId is passed as referenceId during client-side checkout call
           }),
           portal(),
           usage(),

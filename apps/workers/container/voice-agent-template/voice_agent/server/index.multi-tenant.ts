@@ -8,6 +8,8 @@
  * - Integrated with API Gateway authentication
  */
 
+console.log('[Startup] Loading dependencies...')
+
 import 'dotenv/config'
 
 import { InworldError } from '@inworld/runtime/common'
@@ -22,12 +24,37 @@ import { CharacterPoolManager } from './middleware/CharacterPoolManager'
 import { MessageHandler } from './components/message_handler'
 import type { Agent } from './types'
 
+console.log('[Startup] Dependencies loaded successfully')
+
+console.log('[Startup] Creating Express app...')
 const app = express()
 const server = createServer(app)
 const webSocket = new WebSocketServer({ noServer: true })
 
+// Debug: Check if models directory exists
+import * as fs from 'fs'
+import * as path from 'path'
+
+const modelsPath = '/app/models'
+console.log('[Startup] Checking models directory:', modelsPath)
+if (fs.existsSync(modelsPath)) {
+  const files = fs.readdirSync(modelsPath)
+  console.log('[Startup] Models directory contents:', files)
+  const vadModelPath = path.join(modelsPath, 'silero_vad.onnx')
+  if (fs.existsSync(vadModelPath)) {
+    const stats = fs.statSync(vadModelPath)
+    console.log('[Startup] VAD model file found:', vadModelPath, 'size:', stats.size, 'bytes')
+  } else {
+    console.error('[Startup] VAD model file NOT FOUND:', vadModelPath)
+  }
+} else {
+  console.error('[Startup] Models directory does NOT exist:', modelsPath)
+}
+
+console.log('[Startup] Initializing CharacterPoolManager...')
 // Get character pool manager singleton
 const characterPool = CharacterPoolManager.getInstance()
+console.log('[Startup] CharacterPoolManager initialized')
 
 // CORS configuration
 const corsOptions = {
@@ -180,17 +207,22 @@ webSocket.on('connection', (ws, request) => {
 
 // Load agent endpoint - Creates or reuses character instance
 app.post('/load', async (req, res) => {
+  const loadStartTime = Date.now()
   try {
     const { query } = parse(req.url!, true)
     const sessionKey = query.key?.toString()
 
+    console.log(`[Load] Request received - sessionKey: ${sessionKey}`)
+
     if (!sessionKey) {
+      console.error('[Load] Missing session key')
       return res.status(400).json({ error: 'Missing session key' })
     }
 
     const { agent, userName } = req.body as { agent: Agent; userName: string }
 
     if (!agent || !userName) {
+      console.error('[Load] Missing agent or userName in request body')
       return res.status(400).json({ error: 'Missing agent or userName' })
     }
 
@@ -200,10 +232,15 @@ app.post('/load', async (req, res) => {
     const inworldApiKey = req.headers['x-inworld-api-key'] as string
 
     if (!characterId || !inworldCharacterId || !inworldApiKey) {
+      console.error('[Load] Missing required headers:', {
+        hasCharacterId: !!characterId,
+        hasInworldCharacterId: !!inworldCharacterId,
+        hasInworldApiKey: !!inworldApiKey,
+      })
       return res.status(400).json({ error: 'Missing required headers' })
     }
 
-    console.log(`[Load] Loading character ${characterId} for session ${sessionKey}`)
+    console.log(`[Load] Starting character load - characterId: ${characterId}, sessionKey: ${sessionKey}`)
 
     // Parse voice config from request body if provided
     const voiceConfig = req.body.voiceConfig as {
@@ -215,12 +252,14 @@ app.post('/load', async (req, res) => {
 
     // Get or create character instance (multi-tenant)
     // This will initialize the Inworld app if it's a new character
+    console.log(`[Load] Calling characterPool.getOrCreateCharacter - elapsed: ${Date.now() - loadStartTime}ms`)
     const inworldApp = await characterPool.getOrCreateCharacter(characterId, inworldCharacterId, {
       agent,
       userName,
       apiKey: inworldApiKey,
       voiceConfig,
     })
+    console.log(`[Load] Character obtained from pool - elapsed: ${Date.now() - loadStartTime}ms`)
 
     // Initialize connection state for this session
     if (!inworldApp.connections) {
@@ -237,22 +276,37 @@ app.post('/load', async (req, res) => {
     }
 
     // Load the agent (this creates the system message)
+    // Note: inworldApp.load() calls res.end() internally, so we don't send another response
+    console.log(`[Load] Calling inworldApp.load() - elapsed: ${Date.now() - loadStartTime}ms`)
     await inworldApp.load(req, res)
 
-    console.log(`[Load] Character ${characterId} loaded for session ${sessionKey}`)
-
-    res.status(200).json({
-      success: true,
-      sessionKey,
-      characterId,
-      message: 'Agent loaded successfully',
-    })
+    const totalDuration = Date.now() - loadStartTime
+    console.log(`[Load] SUCCESS - Character ${characterId} loaded for session ${sessionKey} - total duration: ${totalDuration}ms`)
   } catch (error) {
-    console.error('[Load] Error loading agent:', error)
-    res.status(500).json({
-      error: 'Failed to load agent',
-      message: error instanceof Error ? error.message : 'Unknown error',
+    // Enhanced error logging for debugging
+    const { query } = parse(req.url!, true)
+    const sessionKeyFromQuery = query.key?.toString()
+    const characterIdFromHeader = req.headers['x-character-id'] as string | undefined
+
+    console.error('[Load] Error loading agent:', {
+      error,
+      errorType: typeof error,
+      errorConstructor: error?.constructor?.name,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+      sessionKey: sessionKeyFromQuery,
+      characterId: characterIdFromHeader,
     })
+
+    // Only send error response if headers haven't been sent yet
+    // (inworldApp.load() may have already sent a response)
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to load agent',
+        message: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? error.stack : JSON.stringify(error),
+      })
+    }
   }
 })
 
@@ -347,13 +401,29 @@ app.use(
 )
 
 // Start server
-server.listen(WS_APP_PORT, async () => {
-  console.log(`✓ Multi-Tenant Voice Agent Server`)
-  console.log(`✓ Port: ${WS_APP_PORT}`)
-  console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`✓ Max Sessions: 100`)
-  console.log(`✓ WebSocket endpoint: ws://localhost:${WS_APP_PORT}/session`)
-})
+console.log(`[Startup] Starting server on port ${WS_APP_PORT}...`)
+
+try {
+  server.listen(WS_APP_PORT, async () => {
+    console.log(`[Startup] ✓ Multi-Tenant Voice Agent Server STARTED`)
+    console.log(`[Startup] ✓ Port: ${WS_APP_PORT}`)
+    console.log(`[Startup] ✓ Environment: ${process.env.NODE_ENV || 'development'}`)
+    console.log(`[Startup] ✓ Max Sessions: 100`)
+    console.log(`[Startup] ✓ WebSocket endpoint: ws://localhost:${WS_APP_PORT}/session`)
+  })
+
+  server.on('error', (error) => {
+    console.error('[Startup] Server startup error:', error)
+    console.error('[Startup] Error stack:', error.stack)
+    process.exit(1)
+  })
+} catch (error) {
+  console.error('[Startup] Fatal error during server startup:', error)
+  console.error('[Startup] Error type:', typeof error)
+  console.error('[Startup] Error message:', error instanceof Error ? error.message : String(error))
+  console.error('[Startup] Error stack:', error instanceof Error ? error.stack : undefined)
+  process.exit(1)
+}
 
 // Graceful shutdown handler
 function shutdown(signal: string) {

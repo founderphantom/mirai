@@ -56,11 +56,12 @@ export class VoiceStreamClient {
   async connect(websocketUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        console.log('[VoiceStream] Connecting to:', websocketUrl)
         this.ws = new WebSocket(websocketUrl)
         this.ws.binaryType = 'arraybuffer'
 
         this.ws.onopen = () => {
-          console.log('[VoiceStream] Connected')
+          console.log('[VoiceStream] WebSocket connected successfully')
           this.startTime = Date.now()
           this.callbacks.onOpen?.()
           resolve()
@@ -73,8 +74,12 @@ export class VoiceStreamClient {
           reject(new Error(errorMsg))
         }
 
-        this.ws.onclose = () => {
-          console.log('[VoiceStream] Disconnected')
+        this.ws.onclose = (event) => {
+          console.log('[VoiceStream] WebSocket closed:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          })
           this.callbacks.onClose?.()
           this.cleanup()
         }
@@ -83,6 +88,7 @@ export class VoiceStreamClient {
           await this.handleMessage(event.data)
         }
       } catch (error) {
+        console.error('[VoiceStream] Connection error:', error)
         reject(error)
       }
     })
@@ -93,6 +99,8 @@ export class VoiceStreamClient {
    */
   async startAudioCapture(): Promise<void> {
     try {
+      console.log('[VoiceStream] Requesting microphone access...')
+
       // Request microphone permission
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -104,13 +112,24 @@ export class VoiceStreamClient {
         },
       })
 
+      console.log('[VoiceStream] Microphone access granted')
+
+      // Verify WebSocket is still open
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        console.error('[VoiceStream] WebSocket not open, state:', this.ws?.readyState)
+        throw new Error('WebSocket connection lost')
+      }
+
       // Create audio context
       this.audioContext = new AudioContext({ sampleRate: 16000 })
       const source = this.audioContext.createMediaStreamSource(this.mediaStream)
 
+      console.log('[VoiceStream] Audio context created, sample rate:', this.audioContext.sampleRate)
+
       // Create audio processor
       this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1)
 
+      let audioChunksSent = 0
       this.scriptProcessor.onaudioprocess = (e) => {
         if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
           return
@@ -118,16 +137,36 @@ export class VoiceStreamClient {
 
         const audioData = e.inputBuffer.getChannelData(0)
         const int16Array = this.float32ToInt16(audioData)
-        this.ws.send(int16Array.buffer)
+
+        try {
+          // Convert Int16Array to regular array for JSON serialization
+          const audioArray = Array.from(int16Array)
+
+          const message = JSON.stringify({
+            type: 'audio',  // lowercase to match EVENT_TYPE enum
+            audio: [audioArray],  // Wrap in array as expected by backend
+            sampleRate: 16000
+          })
+
+          this.ws.send(message)
+          audioChunksSent++
+
+          // Log first few chunks for debugging
+          if (audioChunksSent <= 3) {
+            console.log(`[VoiceStream] Sent audio chunk ${audioChunksSent}, samples: ${audioArray.length}`)
+          }
+        } catch (error) {
+          console.error('[VoiceStream] Failed to send audio:', error)
+        }
       }
 
       source.connect(this.scriptProcessor)
       this.scriptProcessor.connect(this.audioContext.destination)
 
-      console.log('[VoiceStream] Audio capture started')
+      console.log('[VoiceStream] Audio capture started successfully')
     } catch (error) {
       console.error('[VoiceStream] Failed to start audio capture:', error)
-      throw new Error('Microphone access denied')
+      throw new Error('Microphone access denied or WebSocket closed')
     }
   }
 
@@ -195,9 +234,10 @@ export class VoiceStreamClient {
 
     // Text data = JSON message
     try {
-      const message: VoiceMessage = JSON.parse(data)
+      const message: any = JSON.parse(data)
+      const messageType = message.type?.toLowerCase() || ''
 
-      switch (message.type) {
+      switch (messageType) {
         case 'transcript':
           this.callbacks.onTranscript?.(message.text, message.speaker)
           break
@@ -207,7 +247,23 @@ export class VoiceStreamClient {
           break
 
         case 'error':
-          this.callbacks.onError?.(message.message)
+          // Handle both lowercase 'error' and uppercase 'ERROR' from backend
+          const errorMsg = message.message || message.error || 'Unknown error'
+          console.error('[VoiceStream] Error from backend:', errorMsg)
+          this.callbacks.onError?.(errorMsg)
+          break
+
+        case 'text':
+          // Handle TEXT messages from Inworld (character responses)
+          if (message.text?.text) {
+            console.log('[VoiceStream] Character response:', message.text.text)
+            this.callbacks.onTranscript?.(message.text.text, 'CHARACTER')
+          }
+          break
+
+        case 'new_interaction':
+          // Handle NEW_INTERACTION messages from Inworld (new conversation turn)
+          console.log('[VoiceStream] New interaction started')
           break
 
         default:
@@ -252,6 +308,18 @@ export class VoiceStreamClient {
       int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
     }
     return int16
+  }
+
+  /**
+   * Convert ArrayBuffer to base64 string
+   */
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    return btoa(binary)
   }
 
   /**

@@ -59,23 +59,27 @@ app.all('/api/auth/*', async (c) => {
   return auth.handler(c.req.raw)
 })
 
-// Protected API routes - require authentication
-app.route('/api/characters', characterRoutes)
-app.route('/api/voice', voiceRoutes)
-app.route('/api/assets', assetRoutes)
-
-// Apply auth middleware to all /api/* routes except /api/auth/* and /api/webhooks/*
+// Apply auth middleware to all /api/* routes except /api/auth/*, /api/webhooks/*, and /api/voice/ws
+// IMPORTANT: Must be defined BEFORE routes to protect them
 app.use('/api/*', async (c, next) => {
   const path = c.req.path
 
-  // Skip auth for auth routes and webhooks
-  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) {
+  // Skip auth for:
+  // - /api/auth/* - Better-Auth handles its own auth
+  // - /api/webhooks/* - Uses signature verification
+  // - /api/voice/ws - Uses sessionKey from KV cache
+  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/') || path === '/api/voice/ws') {
     return next()
   }
 
   const auth = createAuth(c.env)
   return authMiddleware(auth)(c, next)
 })
+
+// Protected API routes - require authentication
+app.route('/api/characters', characterRoutes)
+app.route('/api/voice', voiceRoutes)
+app.route('/api/assets', assetRoutes)
 
 // Webhook routes - no auth required (signature verification instead)
 app.route('/api/webhooks', webhookRoutes)

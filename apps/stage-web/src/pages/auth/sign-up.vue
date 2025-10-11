@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { authClient } from '@/lib/auth'
-import { useRouter, onBeforeRouteLeave } from 'vue-router'
-
-const router = useRouter()
+import { onBeforeRouteLeave } from 'vue-router'
 const name = ref('')
 const email = ref('')
 const password = ref('')
@@ -22,7 +20,7 @@ onUnmounted(() => {
 })
 
 // Prevent navigation away from this page when showing verification message
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave((to, _from, next) => {
   console.log('[SIGNUP] onBeforeRouteLeave called, showVerificationMessage:', showVerificationMessage.value, 'to:', to.path)
   if (showVerificationMessage.value) {
     console.log('[SIGNUP] Blocking navigation to:', to.path)

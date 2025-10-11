@@ -3,12 +3,13 @@
 
 FROM node:20-slim AS base
 
-# Install dependencies required for native modules and pnpm
+# Install dependencies required for native modules, pnpm, and SSL certificates for gRPC
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
     git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable \
     && corepack prepare pnpm@latest --activate
@@ -26,6 +27,11 @@ RUN pnpm install && \
 # Development stage (for local testing)
 FROM base AS development
 
+# Install tini for proper signal handling (ca-certificates already in base)
+RUN apt-get update && apt-get install -y \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy server source (includes local constants.ts)
@@ -34,6 +40,9 @@ COPY models/ ./models/
 
 # Expose port
 EXPOSE 4000
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 CMD ["pnpm", "start"]
 
@@ -52,9 +61,10 @@ RUN pnpm build
 # Production stage
 FROM node:20-slim AS production
 
-# Install only runtime dependencies and pnpm
+# Install only runtime dependencies, pnpm, and SSL certificates for gRPC
 RUN apt-get update && apt-get install -y \
     tini \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable \
     && corepack prepare pnpm@latest --activate
@@ -73,10 +83,17 @@ RUN pnpm install --prod && \
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/models ./models
 
+# Verify models directory was copied
+RUN echo "=== Verifying models directory ===" && \
+    ls -la /app/models/ && \
+    echo "=== VAD model file details ===" && \
+    ls -lh /app/models/silero_vad.onnx || echo "WARNING: silero_vad.onnx not found!"
+
 # Create non-root user for security (Debian syntax)
 RUN groupadd --gid 1001 nodejs && \
     useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodejs && \
-    chown -R nodejs:nodejs /app
+    chown -R nodejs:nodejs /app && \
+    chmod -R 755 /app/models
 
 USER nodejs
 
@@ -84,7 +101,7 @@ USER nodejs
 EXPOSE 4000
 
 # Use tini for proper signal handling
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Start the multi-tenant server
 CMD ["node", "dist/index.multi-tenant.js"]

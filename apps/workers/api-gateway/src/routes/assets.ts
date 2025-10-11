@@ -21,11 +21,13 @@ assetRoutes.post('/avatar', async (c) => {
 
   try {
     const formData = await c.req.formData()
-    const file = formData.get('avatar') as File
+    const fileEntry = formData.get('avatar')
 
-    if (!file) {
+    if (!fileEntry || typeof fileEntry === 'string') {
       return c.json({ error: 'No file provided' }, 400)
     }
+
+    const file = fileEntry as File
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
@@ -86,13 +88,15 @@ assetRoutes.post('/upload', async (c) => {
 
   try {
     const formData = await c.req.formData()
-    const file = formData.get('file') as File
+    const fileEntry = formData.get('file')
     const characterId = formData.get('characterId') as string
     const assetType = (formData.get('type') as string) || 'live2d'
 
-    if (!file) {
+    if (!fileEntry || typeof fileEntry === 'string') {
       return c.json({ error: 'No file provided' }, 400)
     }
+
+    const file = fileEntry as File
 
     if (!characterId) {
       return c.json({ error: 'Character ID required' }, 400)

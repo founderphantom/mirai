@@ -11,7 +11,7 @@
     "deploy:production": "wrangler deploy --env production",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test:local": "docker build --target development -t voice-agent-test:dev . && docker run -p 4000:4000 --env-file .env --rm voice-agent-test:dev",
+    "test:local": "docker build --target production -t voice-agent-dev . && docker run -p 4000:4000 --env-file .env --rm voice-agent-dev",
     "test": "vitest",
     "format": "prettier --write .",
     "lint": "eslint ."

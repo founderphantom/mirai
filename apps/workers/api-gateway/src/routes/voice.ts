@@ -12,7 +12,7 @@ const voiceRoutes = new Hono<HonoEnv>()
 
 // Validation schemas
 const startSessionSchema = z.object({
-  characterId: z.string().uuid(),
+  characterId: z.string().min(1),
 })
 
 const endSessionSchema = z.object({
@@ -140,8 +140,9 @@ voiceRoutes.get('/sessions/active', async (c) => {
  * Flow:
  *   1. Validate sessionKey from KV cache
  *   2. Check if WebSocket upgrade request
- *   3. Forward to container with authentication headers
- *   4. Container handles WebSocket connection
+ *   3. Call /load to initialize character in container
+ *   4. Forward WebSocket upgrade to container
+ *   5. Container handles WebSocket connection
  */
 voiceRoutes.get('/ws', async (c) => {
   try {
@@ -177,14 +178,106 @@ voiceRoutes.get('/ws', async (c) => {
       return c.json({ error: 'Expected WebSocket upgrade' }, 426)
     }
 
-    // 5. Prepare container request with authentication headers
+    // 5. Load character in Voice Agent Container before WebSocket upgrade
+    // This ensures the character is initialized in the multi-tenant pool
+    console.log('[VOICE_WS] Loading character before WebSocket upgrade:', {
+      sessionKey,
+      characterId: sessionData.characterId,
+    })
+
+    const loadStartTime = Date.now()
+    const loadUrl = new URL('/load', c.req.url)
+    loadUrl.searchParams.set('key', sessionKey)
+
+    // Create abort controller with 60 second timeout for container initialization
+    // Container cold start + VAD model loading + Inworld graph creation can take 30-60s
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => abortController.abort(), 60000) // 60 seconds
+
+    const loadRequest = new Request(loadUrl.toString(), {
+      method: 'POST',
+      headers: new Headers({
+        'Content-Type': 'application/json',
+        'X-User-ID': sessionData.userId,
+        'X-Character-ID': sessionData.characterId,
+        'X-Inworld-Character-ID': sessionData.inworldCharacterId,
+        'X-Inworld-API-Key': c.env.INWORLD_API_KEY,
+        'X-Inworld-Workspace-ID': c.env.INWORLD_WORKSPACE_ID,
+      }),
+      body: JSON.stringify({
+        agent: sessionData.agentConfig,  // Personality config from character
+        userName: sessionData.userId,    // User ID as userName
+        voiceConfig: sessionData.agentConfig?.voiceConfig || {},
+      }),
+      signal: abortController.signal,
+    })
+
+    // Call /load via service binding (worker validates, proxies to container)
+    let loadResponse: Response
+    try {
+      loadResponse = await c.env.VOICE_AGENT.fetch(loadRequest)
+    } catch (error) {
+      clearTimeout(timeoutId)
+
+      // Check if error is due to abort/timeout
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('[VOICE_WS] Character load timeout (60s exceeded):', {
+          sessionKey,
+          characterId: sessionData.characterId,
+          duration: Date.now() - loadStartTime,
+        })
+        return c.json(
+          {
+            error: 'Character initialization timeout',
+            message: 'Container took too long to initialize character (>60s). This may be a cold start - please try again.',
+            details: 'The voice agent container is warming up. Subsequent requests will be faster.',
+          },
+          504, // Gateway Timeout
+        )
+      }
+
+      // Re-throw other errors
+      throw error
+    }
+
+    clearTimeout(timeoutId)
+
+    if (!loadResponse.ok) {
+      const errorData = await loadResponse.json().catch(() => ({
+        message: 'Unknown error'
+      })) as { message?: string; error?: string }
+      console.error('[VOICE_WS] Failed to load character:', {
+        sessionKey,
+        characterId: sessionData.characterId,
+        error: errorData,
+        duration: Date.now() - loadStartTime,
+      })
+      return c.json(
+        {
+          error: 'Failed to initialize character',
+          message: errorData.message || 'Character loading failed',
+          details: errorData.error || 'Container returned error',
+        },
+        500,
+      )
+    }
+
+    const loadDuration = Date.now() - loadStartTime
+    console.log('[VOICE_WS] Character loaded successfully:', {
+      sessionKey,
+      characterId: sessionData.characterId,
+      duration: loadDuration,
+    })
+
+    // 6. Prepare container request for WebSocket upgrade
     const containerUrl = new URL(c.req.url)
+    containerUrl.pathname = '/session'  // WebSocket upgrade path in container
 
     // Build container request with all necessary headers
     const containerRequest = new Request(containerUrl.toString(), {
       method: c.req.method,
       headers: new Headers({
-        // Forward all original headers
+        // Forward all original headers (including WebSocket upgrade headers)
         ...Object.fromEntries(c.req.raw.headers.entries()),
         // Add authentication and session context headers
         'X-User-ID': sessionData.userId,
@@ -197,11 +290,12 @@ voiceRoutes.get('/ws', async (c) => {
       }),
     })
 
-    // 6. Forward to voice agent container via service binding
-    console.log('[VOICE_WS] Forwarding WebSocket upgrade to container:', {
+    // 7. Forward WebSocket upgrade to voice agent worker (worker proxies to container)
+    console.log('[VOICE_WS] Forwarding WebSocket upgrade to worker:', {
       sessionKey,
       userId: sessionData.userId,
       characterId: sessionData.characterId,
+      loadDuration,
     })
 
     return c.env.VOICE_AGENT.fetch(containerRequest)

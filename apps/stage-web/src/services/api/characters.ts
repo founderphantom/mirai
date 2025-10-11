@@ -14,6 +14,7 @@ export interface Character {
   id: string
   displayName: string
   avatarThumbnail?: string
+  live2dModelKey?: string
   live2dModelPath?: string
   personalityConfig: PersonalityConfig
   totalConversations: number

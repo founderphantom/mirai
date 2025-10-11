@@ -9,6 +9,15 @@ const session = computed(() => sessionData.value.data)
 const user = computed(() => session.value?.user)
 const isLoading = computed(() => sessionData.value.isPending)
 
+// Type definitions
+interface AvatarUploadResponse {
+  url: string
+}
+
+// Type-safe accessors for subscription fields (MVP: not yet implemented in backend)
+const userSubscriptionTier = computed(() => (user.value as any)?.subscriptionTier as string | undefined)
+const userSubscriptionStatus = computed(() => (user.value as any)?.subscriptionStatus as string | undefined)
+
 // Form states
 const isEditingName = ref(false)
 const isChangingPassword = ref(false)
@@ -46,8 +55,8 @@ async function handleUpdateName() {
     success.value = 'Name updated successfully!'
     isEditingName.value = false
 
-    // Refresh session to get updated user data
-    await sessionData.value.refetch()
+    // Note: Session will be refreshed on next page load
+    // Better-Auth doesn't expose a refetch method in the client
   } catch (err) {
     error.value = 'Failed to update name'
     console.error('Update name error:', err)
@@ -141,7 +150,7 @@ async function handleUploadAvatar() {
       throw new Error('Failed to upload avatar')
     }
 
-    const data = await response.json()
+    const data = await response.json() as AvatarUploadResponse
 
     // Update user profile with new avatar URL
     await authClient.updateUser({
@@ -152,8 +161,8 @@ async function handleUploadAvatar() {
     avatarFile.value = null
     avatarPreview.value = null
 
-    // Refresh session
-    await sessionData.value.refetch()
+    // Note: Session will be refreshed on next page load
+    // Better-Auth doesn't expose a refetch method in the client
   } catch (err) {
     error.value = 'Failed to upload avatar'
     console.error('Upload avatar error:', err)
@@ -221,7 +230,7 @@ function getSubscriptionTierColor(tier?: string) {
               <div class="avatar-display">
                 <img
                   v-if="avatarPreview || user.image"
-                  :src="avatarPreview || user.image"
+                  :src="avatarPreview || user.image || undefined"
                   alt="Profile picture"
                   class="avatar-image"
                 />
@@ -339,19 +348,19 @@ function getSubscriptionTierColor(tier?: string) {
               <div class="subscription-tier">
                 <span
                   class="tier-badge"
-                  :style="{ backgroundColor: getSubscriptionTierColor(user.subscriptionTier) }"
+                  :style="{ backgroundColor: getSubscriptionTierColor(userSubscriptionTier) }"
                 >
-                  {{ getSubscriptionTierLabel(user.subscriptionTier) }}
+                  {{ getSubscriptionTierLabel(userSubscriptionTier) }}
                 </span>
               </div>
               <div class="subscription-status">
-                <span v-if="user.subscriptionStatus === 'active'" class="status-active">
+                <span v-if="userSubscriptionStatus === 'active'" class="status-active">
                   Active
                 </span>
-                <span v-else-if="user.subscriptionStatus === 'canceled'" class="status-canceled">
+                <span v-else-if="userSubscriptionStatus === 'canceled'" class="status-canceled">
                   Canceled
                 </span>
-                <span v-else-if="user.subscriptionStatus === 'past_due'" class="status-past-due">
+                <span v-else-if="userSubscriptionStatus === 'past_due'" class="status-past-due">
                   Past Due
                 </span>
                 <span v-else class="status-inactive">

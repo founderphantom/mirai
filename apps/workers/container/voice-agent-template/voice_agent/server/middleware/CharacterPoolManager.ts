@@ -102,8 +102,24 @@ export class CharacterPoolManager {
     const app = new InworldApp()
 
     // Initialize the Inworld app with character-specific config
-    console.log(`[CharacterPool] Initializing Inworld app for character ${characterId}`)
-    await app.initialize(config.apiKey, config.voiceConfig)
+    console.log(`[CharacterPool] Initializing Inworld app for character ${characterId}`, {
+      hasApiKey: !!config.apiKey,
+      apiKeyLength: config.apiKey?.length,
+      voiceConfig: config.voiceConfig,
+    })
+
+    try {
+      await app.initialize(config.apiKey, config.voiceConfig)
+    } catch (error) {
+      console.error(`[CharacterPool] Failed to initialize character ${characterId}:`, {
+        error,
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      })
+      throw error
+    }
 
     // Store the character instance
     charInstance = {

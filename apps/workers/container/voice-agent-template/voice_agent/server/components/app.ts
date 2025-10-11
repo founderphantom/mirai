@@ -65,39 +65,119 @@ export class InworldApp {
       interruptionEnabled: this.interruptionEnabled,
     });
 
-    // Initialize the VAD client
-    console.log('[InworldApp] Loading VAD model from:', this.vadModelPath);
-    this.vadClient = await VADFactory.createLocal({
-      modelPath: this.vadModelPath,
-    });
-    console.log('[InworldApp] VAD model loaded successfully');
+    try {
+      // Verify VAD model file exists before attempting to load
+      const fs = require('fs');
+      const path = require('path');
 
-    // Create graph for text input
-    console.log('[InworldApp] Creating text input graph...');
-    this.graphWithTextInput = await InworldGraphWrapper.create({
-      apiKey: this.apiKey,
-      llmModelName: this.llmModelName,
-      llmProvider: this.llmProvider,
-      voiceId: this.voiceId,
-      connections: this.connections,
-      graphVisualizationEnabled: this.graphVisualizationEnabled,
-      ttsModelId: this.ttsModelId,
-    });
-    console.log('[InworldApp] Text input graph created');
+      console.log('[InworldApp] Checking VAD model file...');
+      console.log('[InworldApp] Current working directory:', process.cwd());
+      console.log('[InworldApp] __dirname:', __dirname);
+      console.log('[InworldApp] Expected VAD model path:', this.vadModelPath);
 
-    // Create graph for audio input
-    console.log('[InworldApp] Creating audio input graph...');
-    this.graphWithAudioInput = await InworldGraphWrapper.create({
-      apiKey: this.apiKey,
-      llmModelName: this.llmModelName,
-      llmProvider: this.llmProvider,
-      voiceId: this.voiceId,
-      connections: this.connections,
-      withAudioInput: true,
-      graphVisualizationEnabled: this.graphVisualizationEnabled,
-      ttsModelId: this.ttsModelId,
-    });
-    console.log('[InworldApp] Audio input graph created');
+      // Check if file exists
+      if (!fs.existsSync(this.vadModelPath)) {
+        // Try to find the file in common locations
+        const possiblePaths = [
+          this.vadModelPath,
+          path.join(process.cwd(), 'models', 'silero_vad.onnx'),
+          path.join(__dirname, '..', '..', 'models', 'silero_vad.onnx'),
+          '/app/models/silero_vad.onnx',
+          path.join(process.cwd(), 'silero_vad.onnx'),
+        ];
+
+        console.log('[InworldApp] Model not found at primary path. Checking alternative locations:');
+        let foundPath: string | null = null;
+        for (const p of possiblePaths) {
+          console.log(`  - Checking ${p}:`, fs.existsSync(p) ? 'FOUND' : 'not found');
+          if (fs.existsSync(p) && !foundPath) {
+            foundPath = p;
+          }
+        }
+
+        if (foundPath) {
+          console.log(`[InworldApp] Found VAD model at: ${foundPath}, using this path instead`);
+          this.vadModelPath = foundPath;
+        } else {
+          // List files in /app/models to debug
+          const modelsDir = '/app/models';
+          if (fs.existsSync(modelsDir)) {
+            console.log(`[InworldApp] Contents of ${modelsDir}:`);
+            const files = fs.readdirSync(modelsDir);
+            files.forEach((file: string) => {
+              const stats = fs.statSync(path.join(modelsDir, file));
+              console.log(`  - ${file} (${stats.size} bytes)`);
+            });
+          } else {
+            console.log(`[InworldApp] Directory ${modelsDir} does not exist`);
+          }
+
+          throw new Error(`VAD model file not found at any known location. Primary path was: ${this.vadModelPath}`);
+        }
+      } else {
+        const stats = fs.statSync(this.vadModelPath);
+        console.log(`[InworldApp] VAD model file found (${stats.size} bytes)`);
+      }
+
+      // Initialize the VAD client
+      console.log('[InworldApp] Loading VAD model from:', this.vadModelPath);
+      this.vadClient = await VADFactory.createLocal({
+        modelPath: this.vadModelPath,
+      });
+      console.log('[InworldApp] VAD model loaded successfully');
+    } catch (error) {
+      console.error('[InworldApp] Failed to load VAD model:', {
+        error,
+        vadModelPath: this.vadModelPath,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      });
+      throw new Error(`VAD model loading failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      // Create graph for text input
+      console.log('[InworldApp] Creating text input graph...');
+      this.graphWithTextInput = await InworldGraphWrapper.create({
+        apiKey: this.apiKey,
+        llmModelName: this.llmModelName,
+        llmProvider: this.llmProvider,
+        voiceId: this.voiceId,
+        connections: this.connections,
+        graphVisualizationEnabled: this.graphVisualizationEnabled,
+        ttsModelId: this.ttsModelId,
+      });
+      console.log('[InworldApp] Text input graph created');
+    } catch (error) {
+      console.error('[InworldApp] Failed to create text input graph:', {
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(`Text graph creation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      // Create graph for audio input
+      console.log('[InworldApp] Creating audio input graph...');
+      this.graphWithAudioInput = await InworldGraphWrapper.create({
+        apiKey: this.apiKey,
+        llmModelName: this.llmModelName,
+        llmProvider: this.llmProvider,
+        voiceId: this.voiceId,
+        connections: this.connections,
+        withAudioInput: true,
+        graphVisualizationEnabled: this.graphVisualizationEnabled,
+        ttsModelId: this.ttsModelId,
+      });
+      console.log('[InworldApp] Audio input graph created');
+    } catch (error) {
+      console.error('[InworldApp] Failed to create audio input graph:', {
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(`Audio graph creation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     console.log('[InworldApp] Initialization complete');
   }
 

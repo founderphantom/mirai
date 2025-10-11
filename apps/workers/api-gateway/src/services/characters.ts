@@ -181,7 +181,7 @@ export class CharacterService {
       throw new Error(`Failed to create Inworld character: ${response.statusText}`)
     }
 
-    const result = await response.json()
+    const result = await response.json() as { name: string }
     return {
       id: result.name, // e.g., "workspaces/abc/characters/def"
     }

@@ -5,7 +5,9 @@ export const DEFAULT_VOICE_ID = 'Dennis';
 export const DEFAULT_LLM_MODEL_NAME = 'gpt-4o-mini';
 export const DEFAULT_PROVIDER = 'openai';
 export const DEFAULT_TTS_MODEL_ID = 'inworld-tts-1';
-export const DEFAULT_VAD_MODEL_PATH = '../../models/silero_vad.onnx';
+// Path will be resolved at runtime in helpers.ts
+export const DEFAULT_VAD_MODEL_PATH_RELATIVE = '../../models/silero_vad.onnx';
+export const DEFAULT_VAD_MODEL_PATH_ABSOLUTE = '/app/models/silero_vad.onnx';
 export const INPUT_SAMPLE_RATE = 16000;
 export const TTS_SAMPLE_RATE = 24000;
 export const PAUSE_DURATION_THRESHOLD_MS = 300; // increase to reduce discarded LLM requests from interruption

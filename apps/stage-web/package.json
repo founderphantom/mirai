@@ -95,6 +95,7 @@
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250326.0",
     "@iconify-json/carbon": "^1.2.13",
     "@iconify-json/eos-icons": "^1.2.4",
     "@iconify-json/lucide": "^1.2.68",
