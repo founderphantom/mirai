@@ -4,8 +4,8 @@
 **Status:** MVP Implementation in Progress (Phase 1 Complete - API Gateway + Voice Agent)
 **Target Scale:** 5,000 monthly active users (MVP), 10,000+ (Production)
 **Created:** 2025-10-02
-**Last Updated:** 2025-10-07
-**Version:** 1.1
+**Last Updated:** 2025-10-11
+**Version:** 1.2
 
 ---
 
@@ -52,9 +52,12 @@
 - ✅ Worker validation for incoming requests
 - ✅ Header extraction for authentication
 - ✅ Container lifecycle configuration (5min idle, max 10 instances)
-- ⏳ **Pending:** Multi-tenant character pooling implementation
-- ⏳ **Pending:** WebSocket message handling implementation
-- ⏳ **Pending:** Inworld Runtime voice pipeline integration
+- ✅ Multi-tenant character pooling implementation
+- ✅ WebSocket message handling with audio processing
+- ✅ Inworld Runtime voice pipeline integration (VAD + STT + LLM + TTS)
+- ✅ Advanced audio processing with energy validation (2025-10-11)
+- ✅ Background noise filtering with strict thresholds (2025-10-11)
+- ✅ Empty voice input prevention (2025-10-11)
 
 **Database Schema** (`packages/database-schema`)
 - ✅ Drizzle ORM setup with D1 adapter
@@ -65,16 +68,18 @@
 - ⏳ **Pending:** Database migrations generated and applied
 - ⏳ **Pending:** Test data seeding
 
-### ⏳ Phase 2: Frontend Integration (NOT STARTED)
+### ✅ Phase 2: Frontend Integration (COMPLETE - Voice Features)
 
 **Frontend App** (`apps/stage-web`)
-- ❌ Better-Auth client integration
-- ❌ Authentication pages (sign-in, sign-up)
-- ❌ Character selector component
-- ❌ Voice chat interface
-- ❌ WebSocket audio streaming client
-- ❌ Live2D/VRM renderer integration
-- ❌ Chat history display
+- ⏳ **Pending:** Better-Auth client integration
+- ⏳ **Pending:** Authentication pages (sign-in, sign-up)
+- ⏳ **Pending:** Character selector component
+- ✅ Voice chat interface
+- ✅ WebSocket audio streaming client with sequential playback (2025-10-11)
+- ✅ Audio queue to prevent overlapping responses (2025-10-11)
+- ✅ User input blocking while character speaks (2025-10-11)
+- ⏳ **Pending:** Live2D/VRM renderer integration
+- ⏳ **Pending:** Chat history display
 
 ### ⏳ Phase 3: Payment & Subscriptions (NOT STARTED)
 
@@ -84,14 +89,32 @@
 - ❌ Usage-based billing tracking
 - ❌ Customer portal integration
 
-### 🔧 Critical Issues to Fix
+### ✅ Resolved Issues
 
 1. ~~**Voice WebSocket Proxy**~~ ✅ **RESOLVED** (Verified 2025-10-08)
    - Implementation at `apps/workers/api-gateway/src/routes/voice.ts:207` is **correct**
    - Already using `c.env.VOICE_AGENT.fetch(containerRequest)` properly
    - Service binding correctly configured in `wrangler.toml`
 
-2. **Missing Secrets Configuration**
+2. ~~**Empty Voice Inputs & Background Noise**~~ ✅ **RESOLVED** (2025-10-11)
+   - Implemented energy validation before interaction creation
+   - Increased SPEECH_THRESHOLD from 0.85 to 0.90 (stricter VAD)
+   - Doubled MIN_AUDIO_ENERGY from 0.02 to 0.04 (better noise filtering)
+   - Character no longer responds to background noise
+
+3. ~~**Overlapping Audio Responses**~~ ✅ **RESOLVED** (2025-10-11)
+   - Implemented sequential audio playback queue in frontend
+   - Each TTS chunk plays to completion before next chunk starts
+   - Interruption support via queue clearing on new interaction
+
+4. ~~**User Input During Character Speech**~~ ✅ **RESOLVED** (2025-10-11)
+   - Implemented `isCharacterSpeaking` state tracking
+   - Microphone input blocked while character is responding
+   - Input re-enabled when character finishes (on INTERACTION_END)
+
+### 🔧 Remaining Issues
+
+1. **Missing Secrets Configuration**
    - Need to set secrets via `wrangler secret put`:
      - `BETTER_AUTH_SECRET`
      - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
@@ -99,14 +122,9 @@
      - `POLAR_ACCESS_TOKEN` / `POLAR_WEBHOOK_SECRET`
      - `INWORLD_API_KEY` / `INWORLD_WORKSPACE_ID`
 
-3. **Database Migrations Not Applied**
+2. **Database Migrations Not Applied**
    - Run `pnpm db:generate` in `packages/database-schema`
    - Apply migrations to D1: `wrangler d1 execute mirai-production --file=./migrations/xxx.sql`
-
-4. **Container Runtime Not Implemented**
-   - Voice agent Express.js server needs implementation
-   - Inworld Runtime integration pending
-   - Character pooling logic not written
 
 ### 📋 Next Steps (Priority Order)
 
@@ -2163,6 +2181,6 @@ VITE_API_URL=https://api.miraichat.app
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-10-02
+**Document Version:** 1.2
+**Last Updated:** 2025-10-11
 **Author:** Jamaal (Phantom Systems Inc)

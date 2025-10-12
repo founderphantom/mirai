@@ -361,7 +361,9 @@ watch(messages, () => {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  max-height: 100vh;
   background-color: #f5f5f5;
+  overflow: hidden;
 }
 
 .header {
@@ -444,13 +446,16 @@ watch(messages, () => {
 }
 
 .character-display {
-  flex: 1;
+  flex: 0 0 auto;
+  min-height: 200px;
+  max-height: 40vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 2rem;
+  overflow: hidden;
 }
 
 .placeholder {
@@ -492,7 +497,8 @@ watch(messages, () => {
 }
 
 .chat-history {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   background-color: white;
   border-top: 1px solid #e0e0e0;
@@ -514,6 +520,9 @@ watch(messages, () => {
 .messages-container {
   padding: 1rem;
   overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .message {
@@ -545,6 +554,7 @@ watch(messages, () => {
 }
 
 .controls {
+  flex: 0 0 auto;
   padding: 1rem;
   background-color: white;
   border-top: 1px solid #e0e0e0;
