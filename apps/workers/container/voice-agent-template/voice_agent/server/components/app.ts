@@ -48,7 +48,20 @@ export class InworldApp {
     // Use character-specific config if provided, otherwise fall back to env/defaults
     this.llmModelName = characterConfig?.llmModelName || env.llmModelName;
     this.llmProvider = characterConfig?.llmProvider || env.llmProvider;
-    this.voiceId = characterConfig?.voiceId || env.voiceId;
+    // Validate and sanitize voice ID
+    // Inworld uses simple voice names like "Dennis", "Ashley", etc.
+    // Google Cloud TTS uses format like "en-US-Neural2-F"
+    let voiceId = characterConfig?.voiceId || env.voiceId;
+
+    // Detect invalid voice IDs (Google Cloud format with hyphens and locale codes)
+    if (voiceId && /^[a-z]{2}-[A-Z]{2}-/.test(voiceId)) {
+      console.warn(`[InworldApp] Invalid voice ID detected: "${voiceId}". This appears to be a Google Cloud TTS voice.`);
+      console.warn(`[InworldApp] Inworld expects voice names like "Dennis", "Ashley", etc.`);
+      console.warn(`[InworldApp] Falling back to default voice: "${env.voiceId}"`);
+      voiceId = env.voiceId;
+    }
+
+    this.voiceId = voiceId;
     this.ttsModelId = characterConfig?.ttsModelId || env.ttsModelId;
 
     // These are always from environment

@@ -48,6 +48,13 @@ export class VoiceStreamClient {
   private startTime: number = 0
   private audioPlayedSeconds = 0
 
+  // Audio playback queue to prevent overlapping
+  private audioQueue: ArrayBuffer[] = []
+  private isPlayingAudio = false
+
+  // Track if character is currently speaking to block user input
+  private isCharacterSpeaking = false
+
   constructor(private callbacks: VoiceStreamCallbacks) {}
 
   /**
@@ -131,7 +138,8 @@ export class VoiceStreamClient {
 
       let audioChunksSent = 0
       this.scriptProcessor.onaudioprocess = (e) => {
-        if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        // Block audio input if muted, WebSocket not ready, OR character is currently speaking
+        if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN || this.isCharacterSpeaking) {
           return
         }
 
@@ -209,6 +217,11 @@ export class VoiceStreamClient {
       this.ws = null
     }
     this.stopAudioCapture()
+
+    // Clear audio queue
+    this.audioQueue = []
+    this.isPlayingAudio = false
+    this.isCharacterSpeaking = false
   }
 
   /**
@@ -226,7 +239,7 @@ export class VoiceStreamClient {
    * Handle incoming WebSocket messages
    */
   private async handleMessage(data: ArrayBuffer | string): Promise<void> {
-    // Binary data = audio from TTS
+    // Binary data = audio from TTS (direct ArrayBuffer)
     if (data instanceof ArrayBuffer) {
       await this.playAudio(data)
       return
@@ -235,7 +248,12 @@ export class VoiceStreamClient {
     // Text data = JSON message
     try {
       const message: any = JSON.parse(data)
-      const messageType = message.type?.toLowerCase() || ''
+      const messageType = (message.type || '').toLowerCase().trim()
+
+      // Debug: Log all message types for troubleshooting
+      if (messageType && !['audio', 'text', 'new_interaction', 'interaction_end'].includes(messageType)) {
+        console.log('[VoiceStream] Received message type:', messageType, message)
+      }
 
       switch (messageType) {
         case 'transcript':
@@ -257,45 +275,129 @@ export class VoiceStreamClient {
           // Handle TEXT messages from Inworld (character responses)
           if (message.text?.text) {
             console.log('[VoiceStream] Character response:', message.text.text)
+            this.isCharacterSpeaking = true // Block user input while character is speaking
             this.callbacks.onTranscript?.(message.text.text, 'CHARACTER')
           }
           break
 
         case 'new_interaction':
           // Handle NEW_INTERACTION messages from Inworld (new conversation turn)
-          console.log('[VoiceStream] New interaction started')
+          // Clear audio queue to allow interruption (user started speaking again)
+          if (this.audioQueue.length > 0) {
+            console.log('[VoiceStream] New interaction started - clearing audio queue for interruption')
+            this.audioQueue = []
+          } else {
+            console.log('[VoiceStream] New interaction started')
+          }
+          break
+
+        case 'interaction_end':
+          // Handle INTERACTION_END messages from Inworld (conversation turn completed)
+          console.log('[VoiceStream] Interaction ended - re-enabling user input')
+          this.isCharacterSpeaking = false // Re-enable user input after character finishes
+          break
+
+        case 'audio':
+          // Handle AUDIO messages from Inworld (TTS audio chunks)
+          if (message.audio?.chunk) {
+            try {
+              this.isCharacterSpeaking = true // Block user input while character is speaking
+              // Decode base64 WAV audio to ArrayBuffer
+              const audioBuffer = this.base64ToArrayBuffer(message.audio.chunk)
+              await this.playAudio(audioBuffer)
+            } catch (error) {
+              console.error('[VoiceStream] Failed to decode/play TTS audio:', error)
+              console.error('[VoiceStream] Audio message structure:', {
+                hasAudio: !!message.audio,
+                hasChunk: !!message.audio?.chunk,
+                chunkLength: message.audio?.chunk?.length || 0,
+              })
+            }
+          } else {
+            console.warn('[VoiceStream] AUDIO message missing audio.chunk:', message)
+          }
           break
 
         default:
-          console.warn('[VoiceStream] Unknown message type:', message)
+          // Only warn for truly unknown message types (not empty or whitespace)
+          if (messageType) {
+            console.warn('[VoiceStream] Unknown message type:', messageType, message)
+          }
       }
     } catch (error) {
-      console.error('[VoiceStream] Failed to parse message:', error)
+      console.error('[VoiceStream] Failed to parse message:', error, 'Raw data:', data)
     }
   }
 
   /**
    * Play audio received from TTS
+   * Uses a queue to prevent overlapping audio chunks
    */
   private async playAudio(arrayBuffer: ArrayBuffer): Promise<void> {
+    // Add audio to queue
+    this.audioQueue.push(arrayBuffer)
+
+    // If not currently playing, start processing the queue
+    if (!this.isPlayingAudio) {
+      await this.processAudioQueue()
+    }
+  }
+
+  /**
+   * Process audio queue sequentially to prevent overlapping
+   */
+  private async processAudioQueue(): Promise<void> {
+    if (this.isPlayingAudio || this.audioQueue.length === 0) {
+      return
+    }
+
+    this.isPlayingAudio = true
+
+    while (this.audioQueue.length > 0) {
+      const arrayBuffer = this.audioQueue.shift()!
+
+      try {
+        await this.playAudioChunk(arrayBuffer)
+      } catch (error) {
+        console.error('[VoiceStream] Failed to play audio chunk:', error)
+      }
+    }
+
+    this.isPlayingAudio = false
+  }
+
+  /**
+   * Play a single audio chunk and wait for it to finish
+   */
+  private async playAudioChunk(arrayBuffer: ArrayBuffer): Promise<void> {
     if (!this.audioContext) {
       this.audioContext = new AudioContext({ sampleRate: 24000 })
     }
 
-    try {
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer)
-      const source = this.audioContext.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(this.audioContext.destination)
-      source.start(0)
+    return new Promise(async (resolve, reject) => {
+      try {
+        const audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer)
+        const source = this.audioContext!.createBufferSource()
+        source.buffer = audioBuffer
+        source.connect(this.audioContext!.destination)
 
-      // Track audio duration for metrics
-      this.audioPlayedSeconds += audioBuffer.duration
+        // Wait for audio to finish before resolving
+        source.onended = () => {
+          console.log('[VoiceStream] Audio chunk finished playing')
+          resolve()
+        }
 
-      this.callbacks.onAudio?.(arrayBuffer)
-    } catch (error) {
-      console.error('[VoiceStream] Failed to play audio:', error)
-    }
+        source.start(0)
+
+        // Track audio duration for metrics
+        this.audioPlayedSeconds += audioBuffer.duration
+
+        this.callbacks.onAudio?.(arrayBuffer)
+      } catch (error) {
+        console.error('[VoiceStream] Failed to decode/play audio:', error)
+        reject(error)
+      }
+    })
   }
 
   /**
@@ -320,6 +422,18 @@ export class VoiceStreamClient {
       binary += String.fromCharCode(bytes[i])
     }
     return btoa(binary)
+  }
+
+  /**
+   * Convert base64 string to ArrayBuffer
+   */
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes.buffer
   }
 
   /**

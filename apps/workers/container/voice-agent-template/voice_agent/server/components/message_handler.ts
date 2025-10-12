@@ -102,11 +102,21 @@ export class MessageHandler {
     let input: AudioInput | null = null;
 
     try {
+      // Normalize audio and check energy threshold
+      // Returns null if audio is too quiet (background noise)
+      const normalizedAudio = this.audioHandler.normalizeAudio(speechBuffer);
+
+      // Skip sending to STT if audio was rejected (too quiet/noise)
+      if (!normalizedAudio) {
+        console.log('[MessageHandler] Skipping speech processing - audio rejected by energy filter');
+        return;
+      }
+
       input = {
         audio: {
           // Normalize to get consistent input regardless of how loud or quiet the user's microphone input is.
           // Avoid normalizing before VAD else quiet ambient sound can be amplified and trigger VAD.
-          data: this.audioHandler.normalizeAudio(speechBuffer),
+          data: normalizedAudio,
           sampleRate: this.INPUT_SAMPLE_RATE,
         },
         interactionId: this.currentInteractionId,

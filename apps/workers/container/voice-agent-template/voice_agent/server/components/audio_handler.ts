@@ -1,6 +1,7 @@
 import {
   FRAME_PER_BUFFER,
   INPUT_SAMPLE_RATE,
+  MIN_AUDIO_ENERGY,
   MIN_SPEECH_DURATION_MS,
   PAUSE_DURATION_THRESHOLD_MS,
   PRE_ROLL_MS,
@@ -73,14 +74,34 @@ export class AudioHandler {
       this.speechBuffer.push(...audioChunk.data);
 
       let speechDetected = false;
+      let shouldCreateInteraction = false;
+
       if (
         this.speechBuffer.length >
         this.MIN_SPEECH_DURATION_SAMPLES + this.PRE_ROLL_MAX_SAMPLES
       ) {
         speechDetected = true;
 
-        // If speech is detected, create a new interaction if not already created.
+        // Check audio energy BEFORE creating interaction to prevent empty inputs
         if (!this.currentAudioInteractionRegistered) {
+          const energy = this.calculateEnergy(this.speechBuffer);
+
+          // Only create interaction if audio has sufficient energy
+          if (energy >= MIN_AUDIO_ENERGY) {
+            shouldCreateInteraction = true;
+            console.log(`[AudioHandler] Creating interaction - energy sufficient: ${energy.toFixed(4)}`);
+          } else {
+            console.log(`[AudioHandler] Skipping interaction - energy too low: ${energy.toFixed(4)} < ${MIN_AUDIO_ENERGY}`);
+            // Reset state to avoid creating interaction for this audio
+            this.isCapturingSpeech = false;
+            this.speechBuffer = [];
+            this.pauseDuration = 0;
+            return;
+          }
+        }
+
+        // Create interaction only after energy check passes
+        if (shouldCreateInteraction) {
           this.callbacks.onNewInteractionRequested();
           this.currentAudioInteractionRegistered = true;
         }
@@ -95,13 +116,17 @@ export class AudioHandler {
         if (this.pauseDuration > this.PAUSE_DURATION_THRESHOLD_MS) {
           this.isCapturingSpeech = false;
 
-          // If speech is detected, capture the speech.
-          if (speechDetected) {
+          // If speech is detected AND interaction was registered, capture the speech.
+          if (speechDetected && this.currentAudioInteractionRegistered) {
             this.currentAudioInteractionRegistered = false;
             this.callbacks.onSpeechCaptured(
               key,
               [...this.speechBuffer], // Create a copy
             );
+            this.speechBuffer = [];
+          } else if (!this.currentAudioInteractionRegistered) {
+            // Speech was detected but didn't meet energy threshold, discard
+            console.log('[AudioHandler] Discarding low-energy speech buffer');
             this.speechBuffer = [];
           }
         }
@@ -143,7 +168,32 @@ export class AudioHandler {
     }
   }
 
-  normalizeAudio(audioBuffer: number[]): number[] {
+  /**
+   * Calculate RMS (Root Mean Square) energy of audio buffer
+   * Returns value between 0.0 (silence) and 1.0 (full scale)
+   */
+  private calculateEnergy(audioBuffer: number[]): number {
+    let sum = 0;
+    for (let i = 0; i < audioBuffer.length; i++) {
+      sum += audioBuffer[i] * audioBuffer[i];
+    }
+    return Math.sqrt(sum / audioBuffer.length);
+  }
+
+  /**
+   * Normalize audio only if it meets minimum energy threshold
+   * Returns null if audio is too quiet (likely background noise)
+   */
+  normalizeAudio(audioBuffer: number[]): number[] | null {
+    // Calculate energy before normalization
+    const energy = this.calculateEnergy(audioBuffer);
+
+    // Reject audio that's too quiet (background noise)
+    if (energy < MIN_AUDIO_ENERGY) {
+      console.log(`[AudioHandler] Audio rejected - energy too low: ${energy.toFixed(4)} < ${MIN_AUDIO_ENERGY}`);
+      return null;
+    }
+
     let maxVal = 0;
     // Find maximum absolute value
     for (let i = 0; i < audioBuffer.length; i++) {
@@ -151,7 +201,14 @@ export class AudioHandler {
     }
 
     if (maxVal === 0) {
-      return audioBuffer;
+      console.log('[AudioHandler] Audio rejected - all samples are zero');
+      return null;
+    }
+
+    // Only normalize if maxVal is reasonable (not too quiet)
+    if (maxVal < 0.01) {
+      console.log(`[AudioHandler] Audio rejected - max amplitude too low: ${maxVal.toFixed(4)}`);
+      return null;
     }
 
     // Create normalized copy
@@ -160,6 +217,7 @@ export class AudioHandler {
       normalizedBuffer.push(audioBuffer[i] / maxVal);
     }
 
+    console.log(`[AudioHandler] Audio accepted - energy: ${energy.toFixed(4)}, maxVal: ${maxVal.toFixed(4)}`);
     return normalizedBuffer;
   }
 }
