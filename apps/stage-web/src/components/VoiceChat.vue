@@ -3,7 +3,6 @@ import { ref, onUnmounted, computed, watch } from 'vue'
 import { VoiceSessionManager } from '@/services/voice/VoiceSessionManager'
 import { VoiceStreamClient } from '@/services/voice/VoiceStreamClient'
 import type { Character } from '@/services/api/characters'
-import Live2DRenderer from './Live2DRenderer.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 const props = defineProps<{
@@ -12,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  emotion: [emotion: string, intensity: number]
 }>()
 
 // State
@@ -32,26 +32,8 @@ const messages = ref<Array<{ speaker: string; text: string; timestamp: number }>
 // Current emotion for Live2D
 const currentEmotion = ref<{ emotion: string; intensity: number } | null>(null)
 
-// Live2D model URL (from character data)
-// Two-bucket strategy:
-// 1. Public default models: served from PUBLIC_ASSETS bucket via Static Assets Worker
-// 2. Private user models: served from USER_ASSETS bucket via API Gateway (requires auth)
-const live2dModelUrl = computed(() => {
-  if (!props.character.live2dModelKey) {
-    return null
-  }
-
-  const modelKey = props.character.live2dModelKey
-
-  // Check if this is a user-uploaded model (starts with "users/")
-  if (modelKey.startsWith('users/')) {
-    // Private user asset - proxied to API Gateway via service binding
-    return `/api/assets/${modelKey}`
-  } else {
-    // Public default model - served directly from this worker's R2 bucket
-    return `/assets/live2d/models/${modelKey}`
-  }
-})
+// Note: Live2D model is rendered in the main stage area (WidgetStage)
+// This component focuses on the chat UI and voice controls
 
 // Audio visualization
 const audioLevel = ref(0)
@@ -82,6 +64,8 @@ async function startSession() {
       },
       onEmotion: (emotion: string, intensity: number) => {
         currentEmotion.value = { emotion, intensity }
+        // Emit to parent so the stage's Live2D model can react
+        emit('emotion', emotion, intensity)
       },
       onError: (errorMsg: string) => {
         handleWebSocketError(errorMsg, () => startSession())
@@ -268,33 +252,24 @@ watch(messages, () => {
       <button @click="clearError">Dismiss</button>
     </div>
 
-    <!-- Character Display Area with Live2D -->
+    <!-- Character Display Area - Simple Status Display -->
     <div class="character-display">
-      <!-- Live2D Renderer -->
-      <Live2DRenderer
-        v-if="live2dModelUrl"
-        :model-url="live2dModelUrl"
-        :emotion="currentEmotion?.emotion || null"
-        :emotion-intensity="currentEmotion?.intensity || 0.5"
-        :is-listening="isListening"
-        @loaded="() => {}"
-        @error="(msg) => handleWebSocketError(msg)"
-      />
-
-      <!-- Fallback: Avatar placeholder when no Live2D model -->
-      <div v-else class="placeholder">
+      <div class="status-card">
         <div class="avatar-circle">
           <img
             :src="character.avatarThumbnail || '/default-avatar.png'"
             :alt="character.displayName"
           />
         </div>
-        <p class="placeholder-text">
-          {{ isConnected ? 'Voice Chat Active' : 'Character Visualization' }}
-        </p>
-        <p v-if="currentEmotion" class="emotion-display">
-          {{ currentEmotion.emotion }} ({{ (currentEmotion.intensity * 100).toFixed(0) }}%)
-        </p>
+        <div class="status-info">
+          <h4>{{ character.displayName }}</h4>
+          <p class="connection-status" :class="{ connected: isConnected }">
+            {{ isConnected ? '🎤 Voice Active' : '🔇 Not Connected' }}
+          </p>
+          <p v-if="currentEmotion && isConnected" class="emotion-display">
+            Emotion: {{ currentEmotion.emotion }} ({{ (currentEmotion.intensity * 100).toFixed(0) }}%)
+          </p>
+        </div>
       </div>
     </div>
 
@@ -447,30 +422,30 @@ watch(messages, () => {
 
 .character-display {
   flex: 0 0 auto;
-  min-height: 200px;
-  max-height: 40vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 2rem;
-  overflow: hidden;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.placeholder {
-  text-align: center;
-  color: white;
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .avatar-circle {
-  width: 200px;
-  height: 200px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   overflow: hidden;
-  margin: 0 auto 1rem;
-  border: 4px solid white;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 3px solid white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
 }
 
 .avatar-circle img {
@@ -479,21 +454,36 @@ watch(messages, () => {
   object-fit: cover;
 }
 
-.placeholder-text {
+.status-info {
+  flex: 1;
+  color: white;
+}
+
+.status-info h4 {
+  margin: 0 0 0.5rem 0;
   font-size: 1.125rem;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.connection-status {
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
   opacity: 0.9;
 }
 
-.emotion-display {
-  font-size: 1rem;
+.connection-status.connected {
+  color: #10b981;
   font-weight: 600;
-  margin-top: 1rem;
-  padding: 0.5rem 1rem;
+}
+
+.emotion-display {
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.75rem;
   background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 20px;
+  border-radius: 12px;
   display: inline-block;
+  font-weight: 500;
 }
 
 .chat-history {

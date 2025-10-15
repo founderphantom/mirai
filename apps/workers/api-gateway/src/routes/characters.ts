@@ -13,6 +13,7 @@ const characterRoutes = new Hono<HonoEnv>()
 // Validation schemas
 const createCharacterSchema = z.object({
   displayName: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
   personalityConfig: z.object({
     motivations: z.array(z.string()).min(1),
     flaws: z.array(z.string()).min(1),
@@ -25,10 +26,12 @@ const createCharacterSchema = z.object({
     }).optional(),
   }),
   live2dModelKey: z.string().optional(),
+  avatarThumbnail: z.string().url().optional(),
 })
 
 const updateCharacterSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).optional(),
   personalityConfig: z.object({
     motivations: z.array(z.string()).min(1),
     flaws: z.array(z.string()).min(1),
@@ -41,7 +44,7 @@ const updateCharacterSchema = z.object({
     }).optional(),
   }).optional(),
   live2dModelKey: z.string().optional(),
-  avatarThumbnail: z.string().optional(),
+  avatarThumbnail: z.string().url().optional(),
   isPublic: z.boolean().optional(),
 })
 
@@ -76,6 +79,22 @@ characterRoutes.post(
     }
   },
 )
+
+/**
+ * GET /api/characters/presets
+ * Get all preset characters (available to all users)
+ */
+characterRoutes.get('/presets', async (c) => {
+  const service = new CharacterService(c.env)
+
+  try {
+    const presets = await service.getPresetCharacters()
+    return c.json({ characters: presets })
+  } catch (error) {
+    console.error('[CHARACTERS] List presets error:', error)
+    return c.json({ error: 'Failed to fetch preset characters' }, 500)
+  }
+})
 
 /**
  * GET /api/characters

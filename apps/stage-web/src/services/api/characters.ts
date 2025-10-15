@@ -4,20 +4,39 @@
  */
 
 // Character interfaces
+
+/**
+ * PersonalityConfig for Inworld Runtime
+ * Runtime creates characters on-the-fly from this configuration
+ * during conversations, without needing pre-created characters
+ */
 export interface PersonalityConfig {
+  motivations: string[]
+  flaws: string[]
   dialogueStyle: string
   adjectives: string[]
-  tone: string
+  voiceConfig?: {
+    pitch?: number
+    speed?: number
+    emotionRange?: 'low' | 'medium' | 'high'
+  }
 }
 
+/**
+ * Character entity
+ * Stores configuration for Inworld Runtime characters
+ * Characters are created on-the-fly during conversations using this config
+ */
 export interface Character {
   id: string
   displayName: string
+  description?: string
   avatarThumbnail?: string
   live2dModelKey?: string
   live2dModelPath?: string
   personalityConfig: PersonalityConfig
   totalConversations: number
+  isPreset?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -78,34 +97,59 @@ export async function getCharacter(characterId: string): Promise<Character> {
 }
 
 /**
- * For MVP: Get hardcoded Hiyori character
- * This is a mock function until the backend character system is fully implemented
+ * Get all preset characters (available to all users)
+ * These are fetched from the database where they're seeded via Runtime approach
  */
-export function getMVPCharacter(): Character {
-  return {
-    id: 'hiyori_pro_zh',
-    displayName: 'Hiyori',
-    avatarThumbnail: '/assets/live2d/models/hiyori_pro_zh/thumbnail.png',
-    live2dModelPath: '/assets/live2d/models/hiyori_pro_zh.zip',
-    personalityConfig: {
-      dialogueStyle: 'Friendly and supportive',
-      adjectives: ['Cheerful', 'Caring', 'Energetic'],
-      tone: 'warm',
-    },
-    totalConversations: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+export async function getPresetCharacters(): Promise<GetCharactersResponse> {
+  try {
+    const response = await fetch('/api/characters/presets', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch preset characters: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return {
+      characters: data.characters || [],
+      total: data.characters?.length || 0,
+    }
+  }
+  catch (error) {
+    console.error('Error fetching preset characters:', error)
+    throw error
   }
 }
 
 /**
- * For MVP: Get characters list (currently just Hiyori)
- * This is a mock function until the backend character system is fully implemented
+ * Get all characters (preset + user's own characters)
  */
-export function getMVPCharacters(): GetCharactersResponse {
-  const hiyori = getMVPCharacter()
-  return {
-    characters: [hiyori],
-    total: 1,
+export async function getAllCharacters(): Promise<GetCharactersResponse> {
+  try {
+    // Fetch both preset and user characters in parallel
+    const [presetsResponse, userCharactersResponse] = await Promise.all([
+      getPresetCharacters(),
+      getCharacters().catch(() => ({ characters: [], total: 0 })), // Fallback if user not authenticated
+    ])
+
+    // Combine and return
+    const allCharacters = [
+      ...presetsResponse.characters,
+      ...userCharactersResponse.characters,
+    ]
+
+    return {
+      characters: allCharacters,
+      total: allCharacters.length,
+    }
+  }
+  catch (error) {
+    console.error('Error fetching all characters:', error)
+    throw error
   }
 }

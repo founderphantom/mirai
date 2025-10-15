@@ -20,6 +20,7 @@ import characterRoutes from './routes/characters'
 import voiceRoutes from './routes/voice'
 import assetRoutes from './routes/assets'
 import webhookRoutes from './routes/webhooks'
+import adminRoutes from './routes/admin'
 
 // Export Durable Objects
 export { VoiceSession } from './services/voice'
@@ -59,7 +60,7 @@ app.all('/api/auth/*', async (c) => {
   return auth.handler(c.req.raw)
 })
 
-// Apply auth middleware to all /api/* routes except /api/auth/*, /api/webhooks/*, and /api/voice/ws
+// Apply auth middleware to all /api/* routes except /api/auth/*, /api/webhooks/*, /api/voice/ws, /api/assets/public/*, and /admin/*
 // IMPORTANT: Must be defined BEFORE routes to protect them
 app.use('/api/*', async (c, next) => {
   const path = c.req.path
@@ -68,7 +69,17 @@ app.use('/api/*', async (c, next) => {
   // - /api/auth/* - Better-Auth handles its own auth
   // - /api/webhooks/* - Uses signature verification
   // - /api/voice/ws - Uses sessionKey from KV cache
-  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/') || path === '/api/voice/ws') {
+  // - /api/assets/public/* - Public assets (preset character thumbnails, etc.)
+  // - /api/characters/presets - Public preset characters list
+  // - /admin/* - Uses admin secret verification (handled in admin routes)
+  if (
+    path.startsWith('/api/auth/') ||
+    path.startsWith('/api/webhooks/') ||
+    path === '/api/voice/ws' ||
+    path.startsWith('/api/assets/public/') ||
+    path === '/api/characters/presets' ||
+    path.startsWith('/admin/')
+  ) {
     return next()
   }
 
@@ -83,6 +94,9 @@ app.route('/api/assets', assetRoutes)
 
 // Webhook routes - no auth required (signature verification instead)
 app.route('/api/webhooks', webhookRoutes)
+
+// Admin routes - require admin secret
+app.route('/admin', adminRoutes)
 
 // 404 handler
 app.notFound((c) => {

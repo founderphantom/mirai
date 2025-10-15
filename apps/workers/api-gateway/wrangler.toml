@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "mirai-production"
-database_id = "0e9b450e-3ee6-4cf8-b78b-f28d29907e81"
+database_id = "d340a610-eac9-4804-bcbb-ccebe7f1adb4"
 
 # R2 Bucket Binding - User Assets (Private)
 [[r2_buckets]]

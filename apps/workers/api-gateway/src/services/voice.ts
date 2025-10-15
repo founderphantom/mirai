@@ -124,20 +124,23 @@ export class VoiceSessionService {
    * Start a new voice session
    */
   async startSession(userId: string, characterId: string) {
-    // 1. Verify character ownership
+    // 1. Verify character access (either owned by user OR is a preset)
     const character = await this.db
       .select()
       .from(characters)
-      .where(
-        and(
-          eq(characters.id, characterId),
-          eq(characters.userId, userId),
-        ),
-      )
+      .where(eq(characters.id, characterId))
       .limit(1)
 
     if (!character.length) {
       throw new Error('Character not found')
+    }
+
+    // Verify user has access to this character
+    const isOwned = character[0].userId === userId
+    const isPreset = character[0].isPreset === true
+
+    if (!isOwned && !isPreset) {
+      throw new Error('You do not have access to this character')
     }
 
     // 2. Create conversation record

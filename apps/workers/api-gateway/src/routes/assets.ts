@@ -178,8 +178,41 @@ assetRoutes.post('/upload', async (c) => {
 })
 
 /**
+ * GET /api/assets/public/:key
+ * Download a public asset from R2 (e.g., preset character avatars)
+ * No authentication required
+ */
+assetRoutes.get('/public/:key{.+}', async (c) => {
+  const key = c.req.param('key')
+
+  // Only allow access to preset/public assets
+  if (!key.startsWith('presets/')) {
+    return c.json({ error: 'Access denied - not a public asset' }, 403)
+  }
+
+  try {
+    const object = await c.env.USER_ASSETS.get(key)
+
+    if (!object) {
+      return c.json({ error: 'Asset not found' }, 404)
+    }
+
+    const headers = new Headers()
+    object.writeHttpMetadata(headers)
+    headers.set('etag', object.httpEtag)
+    headers.set('Cache-Control', 'public, max-age=31536000') // Cache for 1 year (public assets don't change)
+    headers.set('Access-Control-Allow-Origin', '*')
+
+    return new Response(object.body, { headers })
+  } catch (error) {
+    console.error('[ASSETS] Public asset download error:', error)
+    return c.json({ error: 'Failed to download asset' }, 500)
+  }
+})
+
+/**
  * GET /api/assets/:key
- * Download an asset from R2
+ * Download an asset from R2 (authenticated)
  */
 assetRoutes.get('/:key{.+}', async (c) => {
   const user = c.get('user')

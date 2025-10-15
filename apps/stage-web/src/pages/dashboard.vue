@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useSession } from '@/lib/auth'
 import { authClient } from '@/lib/auth'
 import { useRouter } from 'vue-router'
-import { getMVPCharacters, type Character } from '@/services/api/characters'
+import { getAllCharacters, type Character } from '@/services/api/characters'
 
 const router = useRouter()
 const sessionData = useSession()
@@ -37,13 +37,15 @@ function startConversation() {
 // Load characters on mount
 onMounted(async () => {
   try {
-    // For MVP: Use mock function to get Hiyori character
-    const response = getMVPCharacters()
+    // Fetch all characters (preset + user's own characters)
+    const response = await getAllCharacters()
     characters.value = response.characters
 
-    // Auto-select the first (and only) character for MVP
+    // Auto-select the first preset character if available
     if (characters.value.length > 0) {
-      selectedCharacter.value = characters.value[0]
+      // Prefer preset characters first
+      const presetCharacter = characters.value.find(c => c.isPreset)
+      selectedCharacter.value = presetCharacter || characters.value[0]
     }
   }
   catch (err) {

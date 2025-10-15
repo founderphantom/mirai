@@ -14,18 +14,19 @@ import { user } from './auth'
 export const characters = sqliteTable('characters', {
   id: text('id').primaryKey(), // UUID
   userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
+    .references(() => user.id, { onDelete: 'cascade' }), // Nullable for preset characters
   inworldCharacterId: text('inworld_character_id').notNull(), // Inworld Studio API character ID
   displayName: text('display_name').notNull(),
   live2dModelKey: text('live2d_model_key'), // R2 key for Live2D model
   avatarThumbnail: text('avatar_thumbnail'), // R2 URL for avatar image
+  description: text('description'), // Character description for display
 
   // Personality configuration stored as JSON
   // Schema: { motivations, flaws, dialogue_style, adjectives, voice_config }
   personalityConfig: text('personality_config', { mode: 'json' }).notNull(),
 
   // Metadata
+  isPreset: integer('is_preset', { mode: 'boolean' }).default(false), // System preset characters
   isPublic: integer('is_public', { mode: 'boolean' }).default(false), // For marketplace
   totalConversations: integer('total_conversations').default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -33,6 +34,7 @@ export const characters = sqliteTable('characters', {
 }, (table) => ({
   userIdIdx: index('idx_user_id').on(table.userId),
   inworldIdIdx: index('idx_inworld_id').on(table.inworldCharacterId),
+  presetIdx: index('idx_preset').on(table.isPreset),
 }))
 
 /**
