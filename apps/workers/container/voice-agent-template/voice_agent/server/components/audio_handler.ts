@@ -66,6 +66,38 @@ export class AudioHandler {
     this.calibratedMinAudioEnergy = minAudioEnergy;
   }
 
+  /**
+   * Apply VAD smoothing using majority vote over last N frames
+   * This prevents single-frame false positives from ending speech capture
+   *
+   * @param rawVadResult - Current frame's VAD result (-1 = silence, >= 0 = speech)
+   * @returns Smoothed VAD result (-1 = silence, 1 = speech)
+   */
+  private smoothVADResult(rawVadResult: number): number {
+    // Convert raw result to binary: -1 for silence, 1 for speech
+    const binaryResult = rawVadResult === -1 ? -1 : 1;
+
+    // Add to history
+    this.vadResultHistory.push(binaryResult);
+
+    // Keep only last N results
+    if (this.vadResultHistory.length > this.VAD_SMOOTHING_WINDOW) {
+      this.vadResultHistory.shift();
+    }
+
+    // Not enough history yet, return raw result
+    if (this.vadResultHistory.length < this.VAD_SMOOTHING_WINDOW) {
+      return binaryResult;
+    }
+
+    // Majority vote: count speech frames (1) vs silence frames (-1)
+    const speechCount = this.vadResultHistory.filter(r => r === 1).length;
+    const silenceCount = this.vadResultHistory.filter(r => r === -1).length;
+
+    // Return majority decision
+    return speechCount > silenceCount ? 1 : -1;
+  }
+
   private initializePreRollWithSilence(): void {
     this.preRollBuffer = new Array(this.PRE_ROLL_MAX_SAMPLES).fill(0);
   }
@@ -88,10 +120,13 @@ export class AudioHandler {
     };
     this.audioBuffer = [];
 
-    const vadResult = await this.vadClient.detectVoiceActivity(
+    const rawVadResult = await this.vadClient.detectVoiceActivity(
       audioChunk,
       this.calibratedSpeechThreshold,
     );
+
+    // Apply smoothing to prevent false pauses from noisy frame-by-frame VAD decisions
+    const vadResult = this.smoothVADResult(rawVadResult);
 
     if (this.isCapturingSpeech) {
       this.speechBuffer.push(...audioChunk.data);
@@ -190,6 +225,8 @@ export class AudioHandler {
     this.currentAudioInteractionRegistered = false;
     // Reinitialize with silence instead of empty array
     this.initializePreRollWithSilence();
+    // Reset VAD history for clean state in next session
+    this.vadResultHistory = [];
 
     if (this.speechBuffer.length > 0) {
       // Final energy check before sending
