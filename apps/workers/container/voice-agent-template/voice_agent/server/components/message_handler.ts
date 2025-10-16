@@ -14,6 +14,8 @@ import { InworldApp } from './app';
 import { AudioHandler, AudioHandlerCallbacks } from './audio_handler';
 import { EventFactory } from './event_factory';
 import { InworldGraphWrapper } from './graph';
+import { VADCalibrator, CalibrationProgress } from './vad_calibrator';
+import { getMetricsTracker } from './metrics_tracker';
 
 const WavEncoder = require('wav-encoder');
 
@@ -28,6 +30,12 @@ export class MessageHandler {
   private isProcessing = false;
 
   private audioHandler: AudioHandler;
+  private vadCalibrator: VADCalibrator;
+  private isCalibrating: boolean = false;
+
+  private metricsTracker = getMetricsTracker();
+  private sessionKey: string = '';
+  private chunkCounters: Map<string, number> = new Map();
 
   constructor(
     private inworldApp: InworldApp,
@@ -50,11 +58,43 @@ export class MessageHandler {
       inworldApp.vadClient,
       audioHandlerCallbacks,
     );
+
+    this.vadCalibrator = new VADCalibrator();
+  }
+
+  /**
+   * Initialize metrics tracking for this session
+   */
+  initSession(sessionKey: string): void {
+    this.sessionKey = sessionKey;
+    this.metricsTracker.initSession(sessionKey);
+    console.log('[MessageHandler] Session initialized for metrics:', sessionKey);
+  }
+
+  /**
+   * Start VAD calibration for this session
+   * Should be called when session starts, before normal audio processing
+   */
+  startCalibration(): void {
+    console.log('[MessageHandler] Starting VAD calibration');
+    this.isCalibrating = true;
+    this.vadCalibrator.startCalibration();
+
+    // Send calibration start event to client
+    this.send({
+      type: 'CALIBRATION_START',
+      message: 'Adjusting microphone...'
+    });
   }
 
   private createNewInteraction(logMessage: string): string {
     this.currentInteractionId = v4();
     console.log(logMessage, this.currentInteractionId);
+
+    // Start metrics tracking for this interaction
+    this.metricsTracker.startInteraction(this.sessionKey, this.currentInteractionId);
+    this.chunkCounters.set(this.currentInteractionId, 0);
+
     this.send(
       EventFactory.newInteraction(
         this.currentInteractionId,
@@ -69,6 +109,7 @@ export class MessageHandler {
 
     switch (message.type) {
       case EVENT_TYPE.TEXT:
+        // Text input always works, even during calibration
         this.createNewInteraction('Starting a new interaction from text input');
 
         let input = {
@@ -89,13 +130,86 @@ export class MessageHandler {
         break;
 
       case EVENT_TYPE.AUDIO:
-        await this.audioHandler.processAudioChunk(message, key);
+        // Route audio to calibration or normal processing
+        if (this.isCalibrating) {
+          await this.handleCalibrationAudio(message);
+        } else {
+          await this.audioHandler.processAudioChunk(message, key);
+        }
         break;
 
       case EVENT_TYPE.AUDIO_SESSION_END:
-        this.audioHandler.endAudioSession(key);
+        if (!this.isCalibrating) {
+          this.audioHandler.endAudioSession(key);
+        }
         break;
     }
+  }
+
+  /**
+   * Handle audio during calibration phase
+   */
+  private async handleCalibrationAudio(message: any): Promise<void> {
+    // Extract audio data from message
+    const audioData: number[] = [];
+    for (let i = 0; i < message.audio.length; i++) {
+      Object.values(message.audio[i]).forEach((value) => {
+        audioData.push(value as number);
+      });
+    }
+
+    // Add to calibration buffer
+    const progress = this.vadCalibrator.addCalibrationSample(audioData);
+
+    if (!progress) {
+      return;
+    }
+
+    // Send progress update to client
+    this.send({
+      type: 'CALIBRATION_PROGRESS',
+      phase: progress.phase,
+      progress: progress.progress,
+      message: progress.message
+    });
+
+    // Check if calibration is complete
+    if (progress.phase === 'complete') {
+      this.completeCalibration();
+    }
+  }
+
+  /**
+   * Complete calibration and apply thresholds
+   */
+  private completeCalibration(): void {
+    console.log('[MessageHandler] Completing VAD calibration');
+
+    // Calculate optimal thresholds
+    const calibrationResult = this.vadCalibrator.calculateThresholds();
+
+    // Apply thresholds to audio handler
+    this.audioHandler.setCalibratedThresholds(
+      calibrationResult.speechThreshold,
+      calibrationResult.minAudioEnergy
+    );
+
+    // Mark calibration as complete
+    this.isCalibrating = false;
+
+    // Send completion event to client
+    this.send({
+      type: 'CALIBRATION_COMPLETE',
+      result: {
+        speechThreshold: calibrationResult.speechThreshold,
+        minAudioEnergy: calibrationResult.minAudioEnergy,
+        backgroundNoiseLevel: calibrationResult.backgroundNoiseLevel,
+        speechLevel: calibrationResult.speechLevel
+      },
+      message: 'Microphone calibrated successfully'
+    });
+
+    console.log('[MessageHandler] VAD calibration complete:', calibrationResult);
   }
 
   private processCapturedSpeech(key: string, speechBuffer: number[]) {
@@ -147,17 +261,38 @@ export class MessageHandler {
     interactionId: string;
     graphWrapper: InworldGraphWrapper;
   }) {
-    const { outputStream } = graphWrapper.graph.start(input);
+    try {
+      // Record STT start for audio input
+      if ('audio' in input) {
+        this.metricsTracker.recordSTTStart(interactionId);
+      }
 
-    await this.handleResponse(
-      outputStream,
-      interactionId,
-      this.inworldApp.connections[key].state,
-    );
+      // Record LLM start
+      this.metricsTracker.recordLLMStart(interactionId);
 
-    this.send(EventFactory.interactionEnd(interactionId));
+      const { outputStream } = graphWrapper.graph.start(input);
 
-    graphWrapper.graph.closeExecution(outputStream);
+      await this.handleResponse(
+        outputStream,
+        interactionId,
+        this.inworldApp.connections[key].state,
+      );
+
+      this.send(EventFactory.interactionEnd(interactionId));
+
+      // End interaction with success
+      this.metricsTracker.endInteraction(interactionId, true);
+
+      graphWrapper.graph.closeExecution(outputStream);
+    } catch (error) {
+      console.error('[MessageHandler] Error in executeGraph:', error);
+      // End interaction with failure
+      this.metricsTracker.endInteraction(interactionId, false);
+      throw error;
+    } finally {
+      // Clean up chunk counter
+      this.chunkCounters.delete(interactionId);
+    }
   }
 
   private async handleResponse(
@@ -187,6 +322,10 @@ export class MessageHandler {
 
       await result.processResponse({
         TTSOutputStream: async (ttsStream: GraphTypes.TTSOutputStream) => {
+          // Track if we've received any text (for STT success)
+          let receivedText = false;
+          let fullText = '';
+
           for await (const chunk of ttsStream) {
             if (
               this.interruptionEnabled &&
@@ -200,6 +339,8 @@ export class MessageHandler {
               return;
             }
             responseMessage.content += chunk.text;
+            fullText += chunk.text;
+            receivedText = true;
 
             const audioBuffer = await WavEncoder.encode({
               sampleRate: chunk.audio.sampleRate,
@@ -220,6 +361,16 @@ export class MessageHandler {
               ),
             );
 
+            // Record audio chunk metrics
+            const chunkIndex = this.chunkCounters.get(interactionId) || 0;
+            this.metricsTracker.recordAudioChunk(
+              interactionId,
+              chunkIndex,
+              chunk.text.length,
+              chunk.audio.data.length
+            );
+            this.chunkCounters.set(interactionId, chunkIndex + 1);
+
             // Update the message content.
             const message = state.messages.find(
               (m) => m.id === interactionId && m.role === 'assistant',
@@ -230,11 +381,23 @@ export class MessageHandler {
               state.messages.push(responseMessage);
             }
           }
+
+          // Record STT completion if text was received
+          if (receivedText) {
+            this.metricsTracker.recordSTTComplete(interactionId, fullText, true);
+            this.metricsTracker.recordLLMComplete(interactionId);
+          }
         },
       });
     } catch (error) {
       console.error(error);
       const errorPacket = EventFactory.error(error, interactionId);
+
+      // Record STT error if it's a speech recognition error
+      if (errorPacket.error.includes('recognition') || errorPacket.error.includes('STT')) {
+        this.metricsTracker.recordSTTError(interactionId, errorPacket.error);
+      }
+
       // Ignore errors caused by empty speech.
       if (!errorPacket.error.includes('recognition produced no text')) {
         this.send(errorPacket);

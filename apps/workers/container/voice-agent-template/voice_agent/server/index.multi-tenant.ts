@@ -22,6 +22,7 @@ import { RawData, WebSocketServer } from 'ws'
 import { WS_APP_PORT } from './constants'
 import { CharacterPoolManager } from './middleware/CharacterPoolManager'
 import { MessageHandler } from './components/message_handler'
+import { getMetricsTracker } from './components/metrics_tracker'
 import type { Agent } from './types'
 
 console.log('[Startup] Dependencies loaded successfully')
@@ -55,6 +56,11 @@ console.log('[Startup] Initializing CharacterPoolManager...')
 // Get character pool manager singleton
 const characterPool = CharacterPoolManager.getInstance()
 console.log('[Startup] CharacterPoolManager initialized')
+
+console.log('[Startup] Initializing MetricsTracker...')
+// Get metrics tracker singleton
+const metricsTracker = getMetricsTracker()
+console.log('[Startup] MetricsTracker initialized')
 
 // CORS configuration
 const corsOptions = {
@@ -107,7 +113,62 @@ app.get('/ready', (req, res) => {
 
 // Metrics endpoint for monitoring
 app.get('/metrics', (req, res) => {
-  res.status(200).json(characterPool.getMetrics())
+  const poolMetrics = characterPool.getMetrics()
+  const streamingMetrics = metricsTracker.getAggregateMetrics()
+
+  res.status(200).json({
+    // Character pool metrics
+    pool: poolMetrics,
+
+    // Streaming response metrics
+    streaming: {
+      totalSessions: streamingMetrics.totalSessions,
+      totalInteractions: streamingMetrics.totalInteractions,
+      avgTTFA: streamingMetrics.avgTTFA ? `${streamingMetrics.avgTTFA.toFixed(0)}ms` : 'N/A',
+      avgChunkLatency: streamingMetrics.avgChunkLatency ? `${streamingMetrics.avgChunkLatency.toFixed(0)}ms` : 'N/A',
+      avgInteractionDuration: streamingMetrics.avgInteractionDuration ? `${streamingMetrics.avgInteractionDuration.toFixed(0)}ms` : 'N/A',
+      sttAccuracy: `${streamingMetrics.overallSTTAccuracy.toFixed(1)}%`,
+    },
+
+    // Combined summary
+    timestamp: new Date().toISOString(),
+  })
+})
+
+// Session metrics endpoint - Get detailed metrics for a specific session
+app.get('/metrics/session/:sessionKey', (req, res) => {
+  const { sessionKey } = req.params
+
+  if (!sessionKey) {
+    return res.status(400).json({ error: 'Missing session key' })
+  }
+
+  const sessionMetrics = metricsTracker.getSessionMetrics(sessionKey)
+
+  if (!sessionMetrics) {
+    return res.status(404).json({ error: 'Session not found' })
+  }
+
+  res.status(200).json({
+    sessionKey: sessionMetrics.sessionKey,
+    startTime: new Date(sessionMetrics.startTime).toISOString(),
+    endTime: sessionMetrics.endTime ? new Date(sessionMetrics.endTime).toISOString() : null,
+    totalInteractions: sessionMetrics.totalInteractions,
+    successfulInteractions: sessionMetrics.successfulInteractions,
+    failedInteractions: sessionMetrics.failedInteractions,
+    avgTTFA: sessionMetrics.avgTTFA ? `${sessionMetrics.avgTTFA.toFixed(0)}ms` : 'N/A',
+    avgChunkLatency: sessionMetrics.avgChunkLatency ? `${sessionMetrics.avgChunkLatency.toFixed(0)}ms` : 'N/A',
+    avgInteractionDuration: sessionMetrics.avgInteractionDuration ? `${sessionMetrics.avgInteractionDuration.toFixed(0)}ms` : 'N/A',
+    sttAccuracy: `${sessionMetrics.sttAccuracy.toFixed(1)}%`,
+    recentInteractions: sessionMetrics.interactions.slice(-10).map(i => ({
+      interactionId: i.interactionId,
+      ttfa: i.ttfa ? `${i.ttfa}ms` : 'N/A',
+      totalDuration: i.totalDuration ? `${i.totalDuration}ms` : 'N/A',
+      audioChunks: i.audioChunks.length,
+      sttSuccess: i.sttSuccess,
+      sttText: i.sttText?.substring(0, 100), // First 100 chars
+    })),
+  })
 })
 
 // WebSocket connection handler with multi-tenant support
@@ -178,6 +239,13 @@ webSocket.on('connection', (ws, request) => {
     }
   })
 
+  // Initialize metrics tracking for this session
+  messageHandler.initSession(sessionKey)
+
+  // Start VAD calibration immediately when WebSocket connects
+  console.log(`[WebSocket] Starting VAD calibration for session ${sessionKey}`)
+  messageHandler.startCalibration()
+
   ws.on('message', (data: RawData) => {
     try {
       messageHandler.handleMessage(data, key)
@@ -194,6 +262,9 @@ webSocket.on('connection', (ws, request) => {
 
   ws.on('close', () => {
     console.log(`[WebSocket] Disconnected - Session: ${sessionKey}`)
+
+    // End metrics tracking for this session
+    metricsTracker.endSession(sessionKey)
 
     // Remove session from character pool
     characterPool.removeSession(characterId, sessionKey)
@@ -400,6 +471,13 @@ app.use(
   },
 )
 
+// Periodic cleanup for metrics tracker (every 30 minutes)
+setInterval(() => {
+  console.log('[Cleanup] Running periodic metrics cleanup...')
+  metricsTracker.cleanup(100) // Keep last 100 sessions
+  console.log('[Cleanup] Metrics cleanup completed')
+}, 30 * 60 * 1000) // 30 minutes
+
 // Start server
 console.log(`[Startup] Starting server on port ${WS_APP_PORT}...`)
 
@@ -410,6 +488,7 @@ try {
     console.log(`[Startup] ✓ Environment: ${process.env.NODE_ENV || 'development'}`)
     console.log(`[Startup] ✓ Max Sessions: 100`)
     console.log(`[Startup] ✓ WebSocket endpoint: ws://localhost:${WS_APP_PORT}/session`)
+    console.log(`[Startup] ✓ Metrics tracking enabled`)
   })
 
   server.on('error', (error) => {

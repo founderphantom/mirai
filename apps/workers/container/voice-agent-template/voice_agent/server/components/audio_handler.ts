@@ -36,11 +36,34 @@ export class AudioHandler {
   // Keep track to avoid creating multiple interactions for the same continuous user speech.
   private currentAudioInteractionRegistered: boolean = false;
 
+  // Per-session calibrated thresholds (overrides global constants)
+  private calibratedSpeechThreshold: number = SPEECH_THRESHOLD;
+  private calibratedMinAudioEnergy: number = MIN_AUDIO_ENERGY;
+
+  // VAD Hysteresis: Track last N VAD results to smooth out noisy frame-by-frame decisions
+  private readonly VAD_SMOOTHING_WINDOW = 5; // Track last 5 frames (5 * 64ms = 320ms window)
+  private vadResultHistory: number[] = []; // Stores last N VAD results (-1 = silence, 1 = speech)
+
   constructor(
     private vadClient: any,
     private callbacks: AudioHandlerCallbacks,
   ) {
     this.initializePreRollWithSilence();
+  }
+
+  /**
+   * Set calibrated thresholds for this session
+   * Called after VAD calibration completes
+   */
+  setCalibratedThresholds(speechThreshold: number, minAudioEnergy: number): void {
+    console.log('[AudioHandler] Setting calibrated thresholds:', {
+      speechThreshold,
+      minAudioEnergy,
+      previousSpeechThreshold: this.calibratedSpeechThreshold,
+      previousMinAudioEnergy: this.calibratedMinAudioEnergy
+    });
+    this.calibratedSpeechThreshold = speechThreshold;
+    this.calibratedMinAudioEnergy = minAudioEnergy;
   }
 
   private initializePreRollWithSilence(): void {
@@ -67,7 +90,7 @@ export class AudioHandler {
 
     const vadResult = await this.vadClient.detectVoiceActivity(
       audioChunk,
-      SPEECH_THRESHOLD,
+      this.calibratedSpeechThreshold,
     );
 
     if (this.isCapturingSpeech) {
@@ -87,11 +110,11 @@ export class AudioHandler {
           const energy = this.calculateEnergy(this.speechBuffer);
 
           // Only create interaction if audio has sufficient energy
-          if (energy >= MIN_AUDIO_ENERGY) {
+          if (energy >= this.calibratedMinAudioEnergy) {
             shouldCreateInteraction = true;
             console.log(`[AudioHandler] Creating interaction - energy sufficient: ${energy.toFixed(4)}`);
           } else {
-            console.log(`[AudioHandler] Skipping interaction - energy too low: ${energy.toFixed(4)} < ${MIN_AUDIO_ENERGY}`);
+            console.log(`[AudioHandler] Skipping interaction - energy too low: ${energy.toFixed(4)} < ${this.calibratedMinAudioEnergy}`);
             // Reset state to avoid creating interaction for this audio
             this.isCapturingSpeech = false;
             this.speechBuffer = [];
@@ -116,13 +139,22 @@ export class AudioHandler {
         if (this.pauseDuration > this.PAUSE_DURATION_THRESHOLD_MS) {
           this.isCapturingSpeech = false;
 
-          // If speech is detected AND interaction was registered, capture the speech.
+          // If speech is detected AND interaction was registered, validate final buffer energy
           if (speechDetected && this.currentAudioInteractionRegistered) {
-            this.currentAudioInteractionRegistered = false;
-            this.callbacks.onSpeechCaptured(
-              key,
-              [...this.speechBuffer], // Create a copy
-            );
+            // Final energy check on complete speech buffer to prevent sending low-quality audio
+            const finalEnergy = this.calculateEnergy(this.speechBuffer);
+
+            if (finalEnergy >= this.calibratedMinAudioEnergy) {
+              this.currentAudioInteractionRegistered = false;
+              this.callbacks.onSpeechCaptured(
+                key,
+                [...this.speechBuffer], // Create a copy
+              );
+              console.log(`[AudioHandler] Speech captured - final energy: ${finalEnergy.toFixed(4)}, duration: ${((this.speechBuffer.length / this.INPUT_SAMPLE_RATE) * 1000).toFixed(0)}ms`);
+            } else {
+              console.log(`[AudioHandler] Discarding speech - final energy too low: ${finalEnergy.toFixed(4)} < ${this.calibratedMinAudioEnergy}`);
+              this.currentAudioInteractionRegistered = false;
+            }
             this.speechBuffer = [];
           } else if (!this.currentAudioInteractionRegistered) {
             // Speech was detected but didn't meet energy threshold, discard
@@ -160,10 +192,18 @@ export class AudioHandler {
     this.initializePreRollWithSilence();
 
     if (this.speechBuffer.length > 0) {
-      this.callbacks.onSpeechCaptured(
-        key,
-        [...this.speechBuffer], // Create a copy
-      );
+      // Final energy check before sending
+      const finalEnergy = this.calculateEnergy(this.speechBuffer);
+
+      if (finalEnergy >= this.calibratedMinAudioEnergy) {
+        this.callbacks.onSpeechCaptured(
+          key,
+          [...this.speechBuffer], // Create a copy
+        );
+        console.log(`[AudioHandler] Session ended - speech captured with energy: ${finalEnergy.toFixed(4)}`);
+      } else {
+        console.log(`[AudioHandler] Session ended - discarding low-energy speech: ${finalEnergy.toFixed(4)} < ${this.calibratedMinAudioEnergy}`);
+      }
       this.speechBuffer = [];
     }
   }
@@ -189,8 +229,8 @@ export class AudioHandler {
     const energy = this.calculateEnergy(audioBuffer);
 
     // Reject audio that's too quiet (background noise)
-    if (energy < MIN_AUDIO_ENERGY) {
-      console.log(`[AudioHandler] Audio rejected - energy too low: ${energy.toFixed(4)} < ${MIN_AUDIO_ENERGY}`);
+    if (energy < this.calibratedMinAudioEnergy) {
+      console.log(`[AudioHandler] Audio rejected - energy too low: ${energy.toFixed(4)} < ${this.calibratedMinAudioEnergy}`);
       return null;
     }
 

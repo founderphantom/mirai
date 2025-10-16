@@ -23,6 +23,11 @@ const isMuted = ref(false)
 const sessionKey = ref<string | null>(null)
 const conversationId = ref<string | null>(null)
 
+// Calibration state
+const isCalibrating = ref(false)
+const calibrationProgress = ref(0)
+const calibrationMessage = ref('')
+
 // Error handling with composable
 const { handleWebSocketError, handleApiError, errorMessage, clearError } = useErrorHandler()
 
@@ -78,6 +83,28 @@ async function startSession() {
         isConnected.value = false
         cleanup()
       },
+      onCalibrationStart: () => {
+        console.log('[VoiceChat] VAD calibration started')
+        isCalibrating.value = true
+        calibrationProgress.value = 0
+        calibrationMessage.value = 'Adjusting microphone...'
+      },
+      onCalibrationProgress: (progress: number, message: string) => {
+        console.log('[VoiceChat] VAD calibration progress:', progress, message)
+        calibrationProgress.value = progress
+        calibrationMessage.value = message
+      },
+      onCalibrationComplete: (result: any) => {
+        console.log('[VoiceChat] VAD calibration complete:', result)
+        isCalibrating.value = false
+        calibrationProgress.value = 100
+        calibrationMessage.value = 'Microphone calibrated successfully'
+
+        // Clear calibration message after 2 seconds
+        setTimeout(() => {
+          calibrationMessage.value = ''
+        }, 2000)
+      }
     })
 
     await voiceClient.value.connect(session.websocketUrl)
@@ -252,6 +279,21 @@ watch(messages, () => {
       <button @click="clearError">Dismiss</button>
     </div>
 
+    <!-- Calibration Overlay -->
+    <div v-if="isCalibrating" class="calibration-overlay">
+      <div class="calibration-card">
+        <div class="calibration-icon">🎤</div>
+        <h3>{{ calibrationMessage }}</h3>
+        <div class="calibration-progress-bar">
+          <div
+            class="calibration-progress-fill"
+            :style="{ width: `${calibrationProgress}%` }"
+          ></div>
+        </div>
+        <p class="calibration-hint">Please speak naturally or stay quiet for a few seconds...</p>
+      </div>
+    </div>
+
     <!-- Character Display Area - Simple Status Display -->
     <div class="character-display">
       <div class="status-card">
@@ -339,6 +381,7 @@ watch(messages, () => {
   max-height: 100vh;
   background-color: #f5f5f5;
   overflow: hidden;
+  position: relative; /* Required for calibration overlay positioning */
 }
 
 .header {
@@ -650,5 +693,107 @@ button {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* Calibration Overlay */
+.calibration-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.calibration-card {
+  background-color: white;
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.calibration-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  animation: pulse-icon 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-icon {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.calibration-card h3 {
+  margin: 0 0 1.5rem 0;
+  color: #1a202c;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.calibration-progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.calibration-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.calibration-hint {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 </style>

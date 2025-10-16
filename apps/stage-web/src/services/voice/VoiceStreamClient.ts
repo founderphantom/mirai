@@ -37,6 +37,9 @@ export interface VoiceStreamCallbacks {
   onError?: (error: string) => void
   onOpen?: () => void
   onClose?: () => void
+  onCalibrationStart?: () => void
+  onCalibrationProgress?: (progress: number, message: string) => void
+  onCalibrationComplete?: (result: any) => void
 }
 
 export class VoiceStreamClient {
@@ -149,8 +152,9 @@ export class VoiceStreamClient {
 
       // Buffer audio chunks instead of sending immediately (Inworld template pattern)
       this.scriptProcessor.onaudioprocess = (e) => {
-        // Block audio input if muted, WebSocket not ready, OR character is currently speaking
-        if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN || this.isCharacterSpeaking) {
+        // Block audio input if muted or WebSocket not ready
+        // NOTE: We DO NOT block when character is speaking - this allows interruption!
+        if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
           return
         }
 
@@ -359,14 +363,30 @@ export class VoiceStreamClient {
 
         case 'new_interaction':
           // Handle NEW_INTERACTION messages from Inworld (new conversation turn)
-          // Clear audio queue to allow interruption (user started speaking again)
-          if (this.audioQueue.length > 0) {
-            console.log('[VoiceStream] New interaction started - clearing audio queue for interruption')
-            this.audioQueue = []
-            this.nextStartTime = 0 // Reset timing for new interaction
-          } else {
-            console.log('[VoiceStream] New interaction started')
-          }
+          // INTERRUPTION HANDLING: Stop all ongoing audio playback and clear queue
+          console.log('[VoiceStream] New interaction started - cancelling ongoing playback for interruption')
+
+          // Stop all currently playing audio sources immediately
+          this.currentSources.forEach((source) => {
+            try {
+              source.stop()
+            } catch (e) {
+              console.debug('[VoiceStream] Source already stopped during interruption', e)
+            }
+          })
+          this.currentSources = []
+
+          // Clear the audio queue (any pending chunks)
+          this.audioQueue = []
+
+          // Reset timing state for gapless playback
+          this.nextStartTime = 0
+
+          // Mark playback as not active so new audio can start immediately
+          this.isPlayingAudio = false
+
+          // Re-enable user input (in case it was blocked)
+          this.isCharacterSpeaking = false
           break
 
         case 'interaction_end':
@@ -394,6 +414,21 @@ export class VoiceStreamClient {
           } else {
             console.warn('[VoiceStream] AUDIO message missing audio.chunk:', message)
           }
+          break
+
+        case 'calibration_start':
+          console.log('[VoiceStream] Calibration started')
+          this.callbacks.onCalibrationStart?.()
+          break
+
+        case 'calibration_progress':
+          console.log('[VoiceStream] Calibration progress:', message.progress, message.message)
+          this.callbacks.onCalibrationProgress?.(message.progress, message.message)
+          break
+
+        case 'calibration_complete':
+          console.log('[VoiceStream] Calibration complete:', message.result)
+          this.callbacks.onCalibrationComplete?.(message.result)
           break
 
         default:

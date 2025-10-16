@@ -10,12 +10,12 @@ export const DEFAULT_VAD_MODEL_PATH_RELATIVE = '../../models/silero_vad.onnx';
 export const DEFAULT_VAD_MODEL_PATH_ABSOLUTE = '/app/models/silero_vad.onnx';
 export const INPUT_SAMPLE_RATE = 16000;
 export const TTS_SAMPLE_RATE = 24000;
-export const PAUSE_DURATION_THRESHOLD_MS = 1500; // Increased from 700ms to 1500ms to allow natural speech pauses
-export const MIN_SPEECH_DURATION_MS = 1000; // Increased from 400ms to require more sustained speech
+export const PAUSE_DURATION_THRESHOLD_MS = 1800; // Optimized for natural conversation: allows thinking pauses (1.8s) while still being responsive
+export const MIN_SPEECH_DURATION_MS = 600; // Increased to 600ms to require more sustained speech and filter brief noise
 export const PRE_ROLL_MS = 500; // Add tolerance for clipping of the beginning of user speech
 export const FRAME_PER_BUFFER = 1024;
-export const SPEECH_THRESHOLD = 0.90; // Increased from 0.85 to 0.90 - much stricter to prevent background noise detection
-export const MIN_AUDIO_ENERGY = 0.04; // Increased from 0.02 to 0.04 - minimum RMS energy required to consider audio as speech (0.0-1.0 range)
+export const SPEECH_THRESHOLD = 0.90; // Increased from 0.80 to 0.90 - much stricter to prevent background noise detection
+export const MIN_AUDIO_ENERGY = 0.05; // Increased to 0.05 - minimum RMS energy required to consider audio as speech (0.0-1.0 range)
 export const TEXT_CONFIG = {
   maxNewTokens: 100, // 75 words
   maxPromptLength: 1000,
