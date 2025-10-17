@@ -20,16 +20,23 @@ export const subscriptions = sqliteTable('subscriptions', {
   productId: text('product_id').notNull(), // Polar product ID
   priceId: text('price_id').notNull(), // Polar price ID
   status: text('status', {
-    enum: ['active', 'canceled', 'incomplete', 'past_due']
+    enum: ['active', 'canceled', 'incomplete', 'past_due', 'trialing']
   }).notNull(),
   currentPeriodStart: integer('current_period_start', { mode: 'timestamp' }).notNull(),
   currentPeriodEnd: integer('current_period_end', { mode: 'timestamp' }).notNull(),
   cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).default(false),
+  canceledAt: integer('canceled_at', { mode: 'timestamp' }),
+  // Trial information
+  trialStart: integer('trial_start', { mode: 'timestamp' }),
+  trialEnd: integer('trial_end', { mode: 'timestamp' }),
+  // Metadata
+  metadata: text('metadata', { mode: 'json' }), // Store additional Polar metadata
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 }, (table) => ({
   userIdIdx: index('idx_user_subscription').on(table.userId),
   polarCustomerIdx: index('idx_polar_customer').on(table.polarCustomerId),
+  statusIdx: index('idx_subscription_status').on(table.status),
 }))
 
 /**

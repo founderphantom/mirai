@@ -11,6 +11,7 @@
  */
 
 import { drizzle } from 'drizzle-orm/d1'
+import { eq } from 'drizzle-orm'
 import { characters } from './schema/characters'
 import type { PersonalityConfig } from './schema/characters'
 
@@ -45,6 +46,33 @@ const PRESET_CHARACTERS = [
       },
     } as PersonalityConfig,
   },
+  {
+    id: 'preset-blackwolf-001',
+    displayName: 'BlackWolf',
+    description: 'A mysterious and wise companion with a calm demeanor',
+    live2dModelKey: 'blackwolf.zip', // TEMP: Using Hiyori model until BlackWolf model is added
+    avatarThumbnail: '/assets/live2d/models/blackwolf/preview.png', // TEMP: Using Hiyori thumbnail
+
+    // This is just a reference ID - not actually used by Runtime
+    // Runtime creates characters on-the-fly from personality config
+    inworldCharacterId: 'runtime-character-blackwolf',
+
+    personalityConfig: {
+      motivations: [
+        'Guide users with wisdom and patience',
+        'Understand deeper meanings',
+        'Provide thoughtful insights',
+      ],
+      flaws: ['Sometimes too serious', 'Can be cryptic'],
+      dialogueStyle: 'Calm, mysterious, and wise with a deep voice',
+      adjectives: ['Wise', 'Mysterious', 'Calm', 'Thoughtful', 'Patient'],
+      voiceConfig: {
+        pitch: 0.8, // Lower pitch for more masculine voice
+        speed: 0.9, // Slower, more deliberate
+        emotionRange: 'medium' as const,
+      },
+    } as PersonalityConfig,
+  },
 ]
 
 /**
@@ -63,7 +91,7 @@ export async function seedPresetsRuntime(db: D1Database) {
       const existing = await drizzleDb
         .select()
         .from(characters)
-        .where((c) => c.id === preset.id)
+        .where(eq(characters.id, preset.id))
         .limit(1)
 
       if (existing.length > 0) {

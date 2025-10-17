@@ -95,8 +95,8 @@
 - ✅ Audio visualization with live microphone levels
 - ✅ Error handling composable for consistent UX
 - ✅ API client services (characters, voice)
-- ⏳ **In Progress:** Better-Auth client integration (lib/auth.ts created)
-- ⏳ **In Progress:** Authentication pages (sign-in, sign-up) - scaffolded
+- ✅ Better-Auth client integration (lib/auth.ts created)
+- ✅ Authentication pages (sign-in, sign-up) - scaffolded
 - ⏳ **Pending:** Live2D model loading and animation
 - ⏳ **Pending:** Dashboard and account pages
 

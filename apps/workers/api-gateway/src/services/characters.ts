@@ -7,7 +7,7 @@
 import type { Env } from '../types/env'
 import { drizzle } from 'drizzle-orm/d1'
 import { characters, type NewCharacter, type PersonalityConfig } from '@proj-airi/database-schema'
-import { eq, and, or, isNull } from 'drizzle-orm'
+import { eq, and, or, isNull, asc, desc } from 'drizzle-orm'
 
 export class CharacterService {
   private db
@@ -73,7 +73,7 @@ export class CharacterService {
       .select()
       .from(characters)
       .where(eq(characters.userId, userId))
-      .orderBy(characters.createdAt)
+      .orderBy(asc(characters.createdAt))
   }
 
   /**
@@ -84,7 +84,7 @@ export class CharacterService {
       .select()
       .from(characters)
       .where(eq(characters.isPreset, true))
-      .orderBy(characters.displayName)
+      .orderBy(asc(characters.displayName))
   }
 
   /**

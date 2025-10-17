@@ -35,6 +35,9 @@ export interface Env {
   POLAR_ACCESS_TOKEN: string
   POLAR_ORGANIZATION_ID: string
   POLAR_WEBHOOK_SECRET: string
+  POLAR_PRO_MONTHLY_ID: string
+  POLAR_PRO_YEARLY_ID: string
+  POLAR_ENTERPRISE_ID: string
 
   // Inworld Configuration
   INWORLD_API_KEY: string

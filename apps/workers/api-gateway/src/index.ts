@@ -21,6 +21,7 @@ import voiceRoutes from './routes/voice'
 import assetRoutes from './routes/assets'
 import webhookRoutes from './routes/webhooks'
 import adminRoutes from './routes/admin'
+import paymentRoutes from './routes/payments'
 
 // Export Durable Objects
 export { VoiceSession } from './services/voice'
@@ -91,6 +92,7 @@ app.use('/api/*', async (c, next) => {
 app.route('/api/characters', characterRoutes)
 app.route('/api/voice', voiceRoutes)
 app.route('/api/assets', assetRoutes)
+app.route('/api/payments', paymentRoutes)
 
 // Webhook routes - no auth required (signature verification instead)
 app.route('/api/webhooks', webhookRoutes)

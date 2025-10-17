@@ -50,19 +50,34 @@ LOG_LEVEL = "debug"
 BETTER_AUTH_URL = "https://mirai-api-gateway.founder-968.workers.dev"
 FRONTEND_URL = "https://mirai-stage-web.founder-968.workers.dev"
 
+# Polar Product IDs (get these from Polar dashboard after creating products)
+# Set these after creating products in Polar
+# POLAR_ORGANIZATION_ID is set as a secret, but product IDs can be public
+POLAR_PRO_MONTHLY_ID = "prod_pro_monthly_placeholder"
+POLAR_PRO_YEARLY_ID = "prod_pro_yearly_placeholder"
+POLAR_ENTERPRISE_ID = "prod_enterprise_placeholder"
+
 # Required Secrets (set with: wrangler secret put SECRET_NAME)
 # See AUTHENTICATION_SETUP.md in project root for detailed instructions
 #
+# Auth & OAuth:
 # - BETTER_AUTH_SECRET           (required) Generate with: npx @better-auth/cli secret
 # - GOOGLE_CLIENT_ID             (required) From Google Cloud Console
 # - GOOGLE_CLIENT_SECRET         (required) From Google Cloud Console
 # - DISCORD_CLIENT_ID            (optional) From Discord Developer Portal
 # - DISCORD_CLIENT_SECRET        (optional) From Discord Developer Portal
-# - POLAR_ACCESS_TOKEN           (required) From Polar dashboard
-# - POLAR_ORGANIZATION_ID        (required) From Polar dashboard
-# - POLAR_WEBHOOK_SECRET         (required) From Polar dashboard
+#
+# Polar Payment Integration:
+# - POLAR_ACCESS_TOKEN           (required) From Polar dashboard → Settings → API
+# - POLAR_ORGANIZATION_ID        (required) From Polar dashboard → Settings
+# - POLAR_WEBHOOK_SECRET         (required) From Polar dashboard → Settings → Webhooks
+#
+# Inworld AI:
 # - INWORLD_API_KEY              (required) From Inworld AI dashboard
 # - INWORLD_WORKSPACE_ID         (required) From Inworld AI dashboard
+#
+# Email Service:
+# - RESEND_API_KEY               (required) From Resend dashboard
 
 [observability]
 enabled = true

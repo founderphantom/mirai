@@ -131,29 +131,29 @@ export class VADCalibrator {
 
     // Calculate optimal thresholds based on measured levels
     // Speech threshold: Set to detect speech that's significantly above background noise
-    // Use 0.8-0.95 range, calibrated based on signal-to-noise ratio
+    // Use 0.75-0.85 range (Inworld best practice: be lenient to avoid missing speech)
     const signalToNoiseRatio = speechLevel / (backgroundNoiseLevel + 0.001); // Avoid division by zero
     let speechThreshold: number;
 
     if (signalToNoiseRatio > 10) {
-      // Very clean audio, can use higher threshold
-      speechThreshold = 0.95;
+      // Very clean audio, can use slightly higher threshold
+      speechThreshold = 0.85;
     } else if (signalToNoiseRatio > 5) {
       // Good audio quality
-      speechThreshold = 0.90;
+      speechThreshold = 0.82;
     } else if (signalToNoiseRatio > 3) {
       // Moderate background noise
-      speechThreshold = 0.85;
-    } else {
-      // Noisy environment, use lower threshold but not too low
       speechThreshold = 0.80;
+    } else {
+      // Noisy environment, use lower threshold to capture speech
+      speechThreshold = 0.75;
     }
 
     // Min audio energy: Set slightly above background noise level
     // This prevents background noise from being processed as speech
     const minAudioEnergy = Math.max(
-      backgroundNoiseLevel * 2.5, // 2.5x above background noise
-      0.015 // Absolute minimum threshold
+      backgroundNoiseLevel * 1.5, // 1.5x above background noise (reduced from 2.0x)
+      0.005 // Absolute minimum threshold (reduced from 0.010)
     );
 
     console.log('[VADCalibrator] Calibration results:');

@@ -28,6 +28,9 @@ export default {
       '/assets/duckdb-mvp-8HYqhb4i.wasm',
       '/assets/ort-wasm-simd-threaded.jsep-B0T3yYHD.wasm',
       '/assets/live2d/models/hiyori_pro_zh.zip',
+      '/assets/live2d/models/hiyori_free_zh.zip',
+      '/assets/live2d/models/blackwolf.zip',
+      '/assets/live2d/models/blackwolf/preview.png',
       '/assets/vrm/models/AvatarSample-A/AvatarSample_A.vrm',
       '/assets/vrm/models/AvatarSample-B/AvatarSample_B.vrm',
     ]
