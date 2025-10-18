@@ -4,10 +4,8 @@
  * Frontend utilities for Polar payment integration
  */
 
-import { api } from './index'
-
 export interface CheckoutRequest {
-  tier: 'pro' | 'enterprise'
+  tier: 'pro' | 'max'
   billingCycle?: 'monthly' | 'yearly'
 }
 
@@ -30,7 +28,7 @@ export interface SubscriptionResponse {
     trialStart?: string
     trialEnd?: string
   } | null
-  tier: 'free' | 'pro' | 'enterprise'
+  tier: 'free' | 'pro' | 'max'
   status?: string
   polarCustomerId?: string
   usage: {
@@ -67,8 +65,25 @@ export interface UsageResponse {
 export async function createCheckout(
   request: CheckoutRequest,
 ): Promise<CheckoutResponse> {
-  const response = await api.post<CheckoutResponse>('/api/payments/checkout', request)
-  return response
+  try {
+    const response = await fetch('/api/payments/checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(request),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to create checkout: ${response.statusText}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error creating checkout:', error)
+    throw error
+  }
 }
 
 /**
@@ -76,16 +91,48 @@ export async function createCheckout(
  * Redirects user to Polar customer portal
  */
 export async function getCustomerPortal(): Promise<PortalResponse> {
-  const response = await api.get<PortalResponse>('/api/payments/portal')
-  return response
+  try {
+    const response = await fetch('/api/payments/portal', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get customer portal: ${response.statusText}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error getting customer portal:', error)
+    throw error
+  }
 }
 
 /**
  * Get subscription status
  */
 export async function getSubscription(): Promise<SubscriptionResponse> {
-  const response = await api.get<SubscriptionResponse>('/api/payments/subscription')
-  return response
+  try {
+    const response = await fetch('/api/payments/subscription', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get subscription: ${response.statusText}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error getting subscription:', error)
+    throw error
+  }
 }
 
 /**
@@ -93,15 +140,32 @@ export async function getSubscription(): Promise<SubscriptionResponse> {
  * Internal use only - called from voice session
  */
 export async function trackUsage(request: UsageRequest): Promise<UsageResponse> {
-  const response = await api.post<UsageResponse>('/api/payments/usage', request)
-  return response
+  try {
+    const response = await fetch('/api/payments/usage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(request),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to track usage: ${response.statusText}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error tracking usage:', error)
+    throw error
+  }
 }
 
 /**
  * Helper: Redirect to checkout
  */
 export async function redirectToCheckout(
-  tier: 'pro' | 'enterprise',
+  tier: 'pro' | 'max',
   billingCycle: 'monthly' | 'yearly' = 'monthly',
 ) {
   const checkout = await createCheckout({ tier, billingCycle })
@@ -132,32 +196,48 @@ export async function hasActiveSubscription(): Promise<boolean> {
 
 /**
  * Helper: Get tier display info
+ * @param tier - The subscription tier
+ * @param billingCycle - The billing cycle (monthly or yearly)
  */
-export function getTierDisplayInfo(tier: 'free' | 'pro' | 'enterprise') {
+export function getTierDisplayInfo(
+  tier: 'free' | 'pro' | 'max',
+  billingCycle: 'monthly' | 'yearly' = 'monthly'
+) {
   const tierInfo = {
     free: {
       name: 'Free',
       color: 'gray',
       icon: '🆓',
-      voiceMinutes: 0,
-      characters: 1,
+      voiceMinutes: 20,
+      characters: -1, // All preset characters
       price: '$0',
+      priceMonthly: '$0/month',
+      priceYearly: '$0/year',
+      features: ['Basic features', 'Limited voice', 'All preset characters'],
     },
     pro: {
       name: 'Pro',
       color: 'purple',
       icon: '⭐',
       voiceMinutes: 500,
-      characters: 10,
-      price: '$19/mo',
+      characters: -1, // All preset characters + marketplace
+      price: billingCycle === 'yearly' ? '$89/year' : '$9/month',
+      priceMonthly: '$9/month',
+      priceYearly: '$89/year',
+      savings: '$19/year',
+      features: ['Full features', 'Priority support', 'Preset characters', 'Marketplace access'],
     },
-    enterprise: {
-      name: 'Enterprise',
+    max: {
+      name: 'Max',
       color: 'gradient',
       icon: '🚀',
       voiceMinutes: -1, // Unlimited
-      characters: -1, // Unlimited
-      price: 'Custom',
+      characters: -1, // Unlimited (preset + marketplace + custom)
+      price: billingCycle === 'yearly' ? '$229/year' : '$24/month',
+      priceMonthly: '$24/month',
+      priceYearly: '$229/year',
+      savings: '$59/year',
+      features: ['Unlimited voice', 'Unlimited characters', 'Custom integration', 'Voice cloning', 'SLA'],
     },
   }
 

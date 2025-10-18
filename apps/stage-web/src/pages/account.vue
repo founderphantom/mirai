@@ -2,6 +2,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { useSession, authClient } from '@/lib/auth'
 import { useRouter } from 'vue-router'
+import { openCustomerPortal, getSubscription, type SubscriptionResponse } from '@/services/api/payments'
 
 const router = useRouter()
 const sessionData = useSession()
@@ -14,9 +15,13 @@ interface AvatarUploadResponse {
   url: string
 }
 
-// Type-safe accessors for subscription fields (MVP: not yet implemented in backend)
-const userSubscriptionTier = computed(() => (user.value as any)?.subscriptionTier as string | undefined)
-const userSubscriptionStatus = computed(() => (user.value as any)?.subscriptionStatus as string | undefined)
+// Subscription data state
+const subscriptionData = ref<SubscriptionResponse | null>(null)
+const isLoadingSubscription = ref(false)
+
+// Computed properties for subscription
+const userSubscriptionTier = computed(() => subscriptionData.value?.tier || 'free')
+const userSubscriptionStatus = computed(() => subscriptionData.value?.status)
 
 // Form states
 const isEditingName = ref(false)
@@ -35,9 +40,26 @@ const success = ref<string | null>(null)
 const avatarFile = ref<File | null>(null)
 const avatarPreview = ref<string | null>(null)
 
-onMounted(() => {
+// Fetch subscription data
+async function fetchSubscription() {
+  if (!user.value) return
+
+  isLoadingSubscription.value = true
+  try {
+    subscriptionData.value = await getSubscription()
+  } catch (err) {
+    console.error('Failed to fetch subscription:', err)
+    // Don't show error to user, just log it
+  } finally {
+    isLoadingSubscription.value = false
+  }
+}
+
+onMounted(async () => {
   if (user.value) {
     displayName.value = user.value.name || ''
+    // Fetch subscription data
+    await fetchSubscription()
   }
 })
 
@@ -180,10 +202,29 @@ function getSubscriptionTierColor(tier?: string) {
   switch (tier) {
     case 'pro':
       return '#667eea'
-    case 'enterprise':
+    case 'max':
       return '#764ba2'
     default:
       return '#6b7280'
+  }
+}
+
+// Handle manage subscription button
+async function handleManageSubscription() {
+  const tier = userSubscriptionTier.value || 'free'
+
+  // If user is on free tier or no subscription, redirect to pricing page
+  if (tier === 'free' || !userSubscriptionStatus.value) {
+    router.push('/pricing')
+    return
+  }
+
+  // If user has active subscription, open customer portal
+  try {
+    await openCustomerPortal()
+  } catch (err) {
+    error.value = 'Failed to open customer portal. Please try again.'
+    console.error('Customer portal error:', err)
   }
 }
 </script>
@@ -343,7 +384,14 @@ function getSubscriptionTierColor(tier?: string) {
         <div class="settings-section">
           <h2>Subscription</h2>
 
-          <div class="subscription-card">
+          <!-- Loading State -->
+          <div v-if="isLoadingSubscription" class="subscription-loading">
+            <div class="loading-spinner-small"></div>
+            <span>Loading subscription...</span>
+          </div>
+
+          <!-- Subscription Card -->
+          <div v-else class="subscription-card">
             <div class="subscription-info">
               <div class="subscription-tier">
                 <span
@@ -367,9 +415,17 @@ function getSubscriptionTierColor(tier?: string) {
                   No active subscription
                 </span>
               </div>
+              <!-- Usage Info -->
+              <div v-if="subscriptionData?.usage" class="subscription-usage">
+                <span class="usage-label">Voice Minutes Used:</span>
+                <span class="usage-value">
+                  {{ subscriptionData.usage.voiceMinutes }} /
+                  {{ subscriptionData.usage.voiceMinutesLimit === -1 ? 'Unlimited' : subscriptionData.usage.voiceMinutesLimit }}
+                </span>
+              </div>
             </div>
-            <button class="manage-subscription-btn">
-              Manage Subscription
+            <button @click="handleManageSubscription" class="manage-subscription-btn">
+              {{ (userSubscriptionTier === 'free' || !userSubscriptionStatus) ? 'Upgrade Plan' : 'Manage Subscription' }}
             </button>
           </div>
         </div>
@@ -699,6 +755,27 @@ function getSubscriptionTierColor(tier?: string) {
   cursor: not-allowed;
 }
 
+/* Subscription Loading */
+.subscription-loading {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  color: #6b7280;
+}
+
+.loading-spinner-small {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(102, 126, 234, 0.2);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
 /* Subscription Card */
 .subscription-card {
   display: flex;
@@ -739,6 +816,28 @@ function getSubscriptionTierColor(tier?: string) {
 .status-inactive {
   color: #6b7280;
   font-weight: 600;
+}
+
+.subscription-usage {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 6px;
+}
+
+.usage-label {
+  font-size: 0.875rem;
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.usage-value {
+  font-size: 0.875rem;
+  color: #667eea;
+  font-weight: 700;
 }
 
 .manage-subscription-btn {

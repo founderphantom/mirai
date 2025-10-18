@@ -77,7 +77,7 @@ watch(
     const currentPath = typeof path === 'string' ? path : '/'
 
     // Define routes that don't require authentication (landing page and auth pages)
-    const publicRoutes = ['/auth/sign-in', '/auth/sign-up', '/']
+    const publicRoutes = ['/auth/sign-in', '/auth/sign-up', '/', '/pricing']
     const authRoutes = ['/auth/sign-in', '/auth/sign-up']
     const isPublicRoute = publicRoutes.includes(currentPath)
     const isAuthRoute = authRoutes.includes(currentPath)

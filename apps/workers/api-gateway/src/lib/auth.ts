@@ -21,9 +21,10 @@ import * as schema from '@proj-airi/database-schema'
 export function createAuth(env: Env) {
   const db = drizzle(env.DB, { schema })
 
-  // Initialize Polar client
+  // Initialize Polar client (using sandbox for testing)
   const polarClient = new Polar({
-    accessToken: env.POLAR_ACCESS_TOKEN,
+    accessToken: env.POLAR_SANDBOX_ACCESS_TOKEN,
+    server: 'sandbox', // Required: Routes API calls to https://sandbox-api.polar.sh
   })
 
   return betterAuth({
@@ -211,13 +212,15 @@ export function createAuth(env: Env) {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         scope: ['email', 'profile'],
-        redirectURI: 'https://mirai-stage-web.founder-968.workers.dev/api/auth/callback/google',
+        // Use custom domain to prevent cross-domain cookie/session issues
+        redirectURI: 'https://miraichat.app/api/auth/callback/google',
       },
       discord: {
         clientId: env.DISCORD_CLIENT_ID,
         clientSecret: env.DISCORD_CLIENT_SECRET,
         scope: ['identify', 'email'],
-        redirectURI: 'https://mirai-stage-web.founder-968.workers.dev/api/auth/callback/discord',
+        // Use custom domain to prevent cross-domain cookie/session issues
+        redirectURI: 'https://miraichat.app/api/auth/callback/discord',
       },
     },
 
@@ -289,7 +292,7 @@ export function createAuth(env: Env) {
           portal(),
           usage(),
           webhooks({
-            secret: env.POLAR_WEBHOOK_SECRET,
+            secret: env.POLAR_SANDBOX_WEBHOOK_SECRET,
           }),
         ],
       }),

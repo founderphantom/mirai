@@ -33,7 +33,7 @@ export interface UsageTrackingResult {
  */
 export async function trackUsage(
   db: ReturnType<typeof drizzle>,
-  polarAccessToken: string,
+  polarAccessToken: string, // This will be the sandbox token when passed from routes
   event: UsageEvent,
 ): Promise<UsageTrackingResult> {
   const { userId, eventType, quantity, metadata = {} } = event
@@ -244,23 +244,15 @@ export async function checkUsageQuota(
   if (eventType === 'voice_minutes') {
     const { used, limit, remaining } = usage.voiceMinutes
 
-    if (limit === 0) {
-      return {
-        allowed: false,
-        reason: 'Voice features not available on free tier',
-        usage,
-      }
-    }
-
     if (limit === -1) {
-      // Unlimited
+      // Unlimited (Max tier)
       return { allowed: true, usage }
     }
 
     if (remaining < requiredAmount) {
       return {
         allowed: false,
-        reason: `Insufficient voice minutes. You have ${remaining} minutes remaining, but need ${requiredAmount}.`,
+        reason: `Insufficient voice minutes. You have ${remaining} minutes remaining, but need ${requiredAmount}. Upgrade to get more minutes!`,
         usage,
       }
     }
@@ -291,16 +283,16 @@ export async function checkUsageQuota(
 function getTierLimits(tier: string) {
   const limits = {
     free: {
-      voiceMinutes: 0,
-      characters: 1,
+      voiceMinutes: 20, // Free tier gets 20 minutes total
+      characters: 1, // 1 preset character
     },
     pro: {
-      voiceMinutes: 500,
-      characters: 10,
+      voiceMinutes: 500, // 500 minutes per month
+      characters: -1, // Unlimited (preset + marketplace)
     },
-    enterprise: {
+    max: {
       voiceMinutes: -1, // Unlimited
-      characters: -1, // Unlimited
+      characters: -1, // Unlimited custom characters
     },
   }
 

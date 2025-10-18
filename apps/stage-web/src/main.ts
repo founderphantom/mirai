@@ -37,6 +37,7 @@ const publicRoutes = [
   '/auth/sign-in',
   '/auth/sign-up',
   '/',
+  '/pricing',
 ]
 
 router.beforeEach(async (to, from) => {

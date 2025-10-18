@@ -34,8 +34,8 @@ paymentRoutes.post('/checkout', async (c) => {
 
     const { tier, billingCycle = 'monthly' } = await c.req.json()
 
-    if (!tier || !['pro', 'enterprise'].includes(tier)) {
-      return c.json({ error: 'Invalid tier. Must be "pro" or "enterprise"' }, 400)
+    if (!tier || !['pro', 'max'].includes(tier)) {
+      return c.json({ error: 'Invalid tier. Must be "pro" or "max"' }, 400)
     }
 
     // Get product ID based on tier and billing cycle
@@ -46,7 +46,8 @@ paymentRoutes.post('/checkout', async (c) => {
 
     // Initialize Polar client
     const polar = new Polar({
-      accessToken: c.env.POLAR_ACCESS_TOKEN,
+      accessToken: c.env.POLAR_SANDBOX_ACCESS_TOKEN,
+      server: 'sandbox', // Required: Routes API calls to https://sandbox-api.polar.sh
     })
 
     const db = drizzle(c.env.DB)
@@ -65,7 +66,7 @@ paymentRoutes.post('/checkout', async (c) => {
 
     // Create checkout session
     const checkout = await polar.checkouts.create({
-      productId,
+      products: [productId], // Polar expects an array of product IDs
       customerEmail: userEmail,
       metadata: {
         userId,
@@ -126,7 +127,8 @@ paymentRoutes.get('/portal', async (c) => {
 
     // Initialize Polar client
     const polar = new Polar({
-      accessToken: c.env.POLAR_ACCESS_TOKEN,
+      accessToken: c.env.POLAR_SANDBOX_ACCESS_TOKEN,
+      server: 'sandbox', // Required: Routes API calls to https://sandbox-api.polar.sh
     })
 
     // Create customer portal session
@@ -284,7 +286,8 @@ paymentRoutes.post('/usage', async (c) => {
     if (eventType === 'voice_minutes') {
       try {
         const polar = new Polar({
-          accessToken: c.env.POLAR_ACCESS_TOKEN,
+          accessToken: c.env.POLAR_SANDBOX_ACCESS_TOKEN,
+          server: 'sandbox', // Required: Routes API calls to https://sandbox-api.polar.sh
         })
 
         // Get user's Polar customer ID
@@ -340,7 +343,7 @@ paymentRoutes.post('/usage', async (c) => {
  */
 function getProductId(
   env: HonoEnv['Bindings'],
-  tier: 'pro' | 'enterprise',
+  tier: 'pro' | 'max',
   billingCycle: 'monthly' | 'yearly',
 ): string | null {
   // These should be set in wrangler.toml or environment
@@ -348,8 +351,10 @@ function getProductId(
     return billingCycle === 'yearly'
       ? env.POLAR_PRO_YEARLY_ID || null
       : env.POLAR_PRO_MONTHLY_ID || null
-  } else if (tier === 'enterprise') {
-    return env.POLAR_ENTERPRISE_ID || null
+  } else if (tier === 'max') {
+    return billingCycle === 'yearly'
+      ? env.POLAR_MAX_YEARLY_ID || null
+      : env.POLAR_MAX_MONTHLY_ID || null
   }
   return null
 }
@@ -360,19 +365,19 @@ function getProductId(
 function getTierLimits(tier: string) {
   const limits = {
     free: {
-      voiceMinutes: 0,
-      characters: 1,
-      features: ['basic'],
+      voiceMinutes: 20, // Free tier gets 20 minutes
+      characters: -1, // All preset characters (no marketplace)
+      features: ['basic', 'preset_characters'],
     },
     pro: {
       voiceMinutes: 500,
-      characters: 10,
-      features: ['basic', 'advanced', 'priority_support'],
+      characters: -1, // All preset characters + marketplace
+      features: ['basic', 'advanced', 'marketplace_access', 'priority_support'],
     },
-    enterprise: {
+    max: {
       voiceMinutes: -1, // Unlimited
-      characters: -1, // Unlimited
-      features: ['basic', 'advanced', 'priority_support', 'custom_integration', 'sla'],
+      characters: -1, // Unlimited (preset + marketplace + custom)
+      features: ['basic', 'advanced', 'marketplace_access', 'priority_support', 'voice_cloning', 'custom_integration', 'sla'],
     },
   }
 

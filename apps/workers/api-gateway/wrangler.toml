@@ -45,17 +45,18 @@ new_sqlite_classes = ["VoiceSession"]
 [vars]
 ENVIRONMENT = "production"
 LOG_LEVEL = "debug"
-# BETTER_AUTH_URL should match your production domain
-# Use custom domain if available, otherwise use workers.dev URL
-BETTER_AUTH_URL = "https://mirai-api-gateway.founder-968.workers.dev"
-FRONTEND_URL = "https://mirai-stage-web.founder-968.workers.dev"
+# BETTER_AUTH_URL should match your production domain to prevent OAuth state mismatch
+# Using custom domain miraichat.app for consistent session/cookie handling
+BETTER_AUTH_URL = "https://miraichat.app"
+FRONTEND_URL = "https://miraichat.app"
 
-# Polar Product IDs (get these from Polar dashboard after creating products)
-# Set these after creating products in Polar
-# POLAR_ORGANIZATION_ID is set as a secret, but product IDs can be public
-POLAR_PRO_MONTHLY_ID = "prod_pro_monthly_placeholder"
-POLAR_PRO_YEARLY_ID = "prod_pro_yearly_placeholder"
-POLAR_ENTERPRISE_ID = "prod_enterprise_placeholder"
+# Polar Configuration
+# Organization ID and Product IDs from Polar dashboard
+POLAR_ORGANIZATION_ID = "60a4b19f-1344-4c5f-b60c-1590bbe321fb"
+POLAR_PRO_MONTHLY_ID = "c540d579-d932-459f-bc8c-c6f73c7091b3"
+POLAR_PRO_YEARLY_ID = "15a6e08c-84d7-4076-a622-6f8e100bfa07"
+POLAR_MAX_MONTHLY_ID = "005f746f-e207-4a00-b25c-a3d1c8f97084"
+POLAR_MAX_YEARLY_ID = "bdd7e461-7fcd-431e-a266-6891e1758781"
 
 # Required Secrets (set with: wrangler secret put SECRET_NAME)
 # See AUTHENTICATION_SETUP.md in project root for detailed instructions
@@ -69,7 +70,6 @@ POLAR_ENTERPRISE_ID = "prod_enterprise_placeholder"
 #
 # Polar Payment Integration:
 # - POLAR_ACCESS_TOKEN           (required) From Polar dashboard → Settings → API
-# - POLAR_ORGANIZATION_ID        (required) From Polar dashboard → Settings
 # - POLAR_WEBHOOK_SECRET         (required) From Polar dashboard → Settings → Webhooks
 #
 # Inworld AI:

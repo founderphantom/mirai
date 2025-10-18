@@ -29,7 +29,7 @@ export const user = sqliteTable('user', {
   // Polar integration
   polarCustomerId: text('polar_customer_id'),
   subscriptionTier: text('subscription_tier', {
-    enum: ['free', 'pro', 'enterprise']
+    enum: ['free', 'pro', 'max']
   }).notNull().default('free'),
   subscriptionStatus: text('subscription_status', {
     enum: ['active', 'canceled', 'past_due', 'incomplete']
