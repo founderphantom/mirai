@@ -51,6 +51,9 @@ export interface Env {
 
   // Email Service (Resend)
   RESEND_API_KEY: string
+
+  // Admin
+  ADMIN_SECRET: string
 }
 
 /**

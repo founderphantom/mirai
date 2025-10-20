@@ -6,6 +6,7 @@ packages:
   - docs/**
   - apps/**
   - '!**/dist/**'
+  - '!apps/workers/container/voice-agent-template-original/**'
 
 catalog:
   '@guiiai/logg': ^1.1.0

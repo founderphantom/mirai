@@ -114,7 +114,7 @@ export async function getPresetCharacters(): Promise<GetCharactersResponse> {
       throw new Error(`Failed to fetch preset characters: ${response.statusText}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as GetCharactersResponse
     return {
       characters: data.characters || [],
       total: data.characters?.length || 0,

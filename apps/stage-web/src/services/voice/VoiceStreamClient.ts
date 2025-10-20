@@ -60,9 +60,6 @@ export class VoiceStreamClient {
   private audioQueue: ArrayBuffer[] = []
   private isPlayingAudio = false
 
-  // Track if character is currently speaking to block user input
-  private isCharacterSpeaking = false
-
   // Gapless playback with crossfade (Inworld template pattern)
   private nextStartTime = 0
   private fadeTime = 0.005 // 5ms crossfade to eliminate clicks
@@ -289,7 +286,6 @@ export class VoiceStreamClient {
     this.audioBuffer = []
     this.audioQueue = []
     this.isPlayingAudio = false
-    this.isCharacterSpeaking = false
     this.nextStartTime = 0
   }
 
@@ -345,17 +341,11 @@ export class VoiceStreamClient {
           if (message.text?.text) {
             // Check routing.source to distinguish user vs character messages
             const isUser = message.routing?.source?.isUser === true
-            const isCharacter = message.routing?.source?.isAgent === true
 
             // Determine speaker based on routing flags
             const speaker = isUser ? 'USER' : 'CHARACTER'
 
             console.log(`[VoiceStream] ${speaker} message:`, message.text.text)
-
-            // Only block user input when character is speaking (not for user's own messages)
-            if (isCharacter) {
-              this.isCharacterSpeaking = true
-            }
 
             this.callbacks.onTranscript?.(message.text.text, speaker)
           }
@@ -384,22 +374,17 @@ export class VoiceStreamClient {
 
           // Mark playback as not active so new audio can start immediately
           this.isPlayingAudio = false
-
-          // Re-enable user input (in case it was blocked)
-          this.isCharacterSpeaking = false
           break
 
         case 'interaction_end':
           // Handle INTERACTION_END messages from Inworld (conversation turn completed)
-          console.log('[VoiceStream] Interaction ended - re-enabling user input')
-          this.isCharacterSpeaking = false // Re-enable user input after character finishes
+          console.log('[VoiceStream] Interaction ended')
           break
 
         case 'audio':
           // Handle AUDIO messages from Inworld (TTS audio chunks)
           if (message.audio?.chunk) {
             try {
-              this.isCharacterSpeaking = true // Block user input while character is speaking
               // Decode base64 WAV audio to ArrayBuffer
               const audioBuffer = this.base64ToArrayBuffer(message.audio.chunk)
               await this.playAudio(audioBuffer)

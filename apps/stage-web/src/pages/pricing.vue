@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { redirectToCheckout, getTierDisplayInfo, formatVoiceMinutes } from '../services/api/payments'
+import { redirectToCheckout } from '../services/api/payments'
 import { useSession } from '../lib/auth'
 import PricingCard from '../components/pricing/PricingCard.vue'
 import PricingComparisonTable from '../components/pricing/PricingComparisonTable.vue'
@@ -9,7 +9,6 @@ import PricingComparisonTable from '../components/pricing/PricingComparisonTable
 const router = useRouter()
 const sessionData = useSession()
 const session = computed(() => sessionData.value?.data)
-const isPending = computed(() => sessionData.value?.isPending)
 
 // Billing cycle toggle
 const billingCycle = ref<'monthly' | 'yearly'>('monthly')

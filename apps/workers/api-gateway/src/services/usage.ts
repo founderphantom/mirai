@@ -117,8 +117,8 @@ export async function trackUsage(
         }
       }
 
-      // Sync to Polar if customer exists and Pro/Enterprise tier
-      if (polarCustomerId && (userTier === 'pro' || userTier === 'enterprise')) {
+      // Sync to Polar if customer exists and Pro/Max tier
+      if (polarCustomerId && (userTier === 'pro' || userTier === 'max')) {
         try {
           const polar = new Polar({ accessToken: polarAccessToken })
 

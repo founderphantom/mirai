@@ -69,11 +69,11 @@ export function useSubscription() {
   }
 
   async function upgradeToTier(
-    targetTier: 'pro' | 'enterprise',
+    targetTier: 'pro' | 'max',
     billingCycle: 'monthly' | 'yearly' = 'monthly',
   ) {
     try {
-      await redirectToCheckout(targetTier, billingCycle)
+      await redirectToCheckout(targetTier as 'pro' | 'max', billingCycle)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to create checkout'
       console.error('Failed to create checkout:', err)

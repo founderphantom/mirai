@@ -1,4 +1,5 @@
 import {
+  CONTINUATION_WINDOW_MS,
   FRAME_PER_BUFFER,
   INPUT_SAMPLE_RATE,
   MIN_AUDIO_ENERGY,
@@ -35,6 +36,11 @@ export class AudioHandler {
 
   // Keep track to avoid creating multiple interactions for the same continuous user speech.
   private currentAudioInteractionRegistered: boolean = false;
+
+  // Continuation window: Track when speech was last captured to detect continuations
+  private lastSpeechCapturedTime: number = 0;
+  private currentInteractionKey: string = '';
+  private isInContinuationWindow: boolean = false;
 
   // Per-session calibrated thresholds (overrides global constants)
   private calibratedSpeechThreshold: number = SPEECH_THRESHOLD;
@@ -146,8 +152,23 @@ export class AudioHandler {
 
           // Only create interaction if audio has sufficient energy
           if (energy >= this.calibratedMinAudioEnergy) {
-            shouldCreateInteraction = true;
-            console.log(`[AudioHandler] Creating interaction - energy sufficient: ${energy.toFixed(4)}`);
+            // Check if we're within the continuation window
+            const timeSinceLastCapture = Date.now() - this.lastSpeechCapturedTime;
+            const isWithinContinuationWindow =
+              this.lastSpeechCapturedTime > 0 &&
+              timeSinceLastCapture < CONTINUATION_WINDOW_MS;
+
+            if (isWithinContinuationWindow) {
+              // Reuse existing interaction (continuation of previous speech)
+              console.log(`[AudioHandler] Continuation detected (${timeSinceLastCapture}ms since last capture) - reusing interaction`);
+              this.currentAudioInteractionRegistered = true;
+              this.isInContinuationWindow = true; // Mark that we're in a continuation
+            } else {
+              // Create new interaction
+              shouldCreateInteraction = true;
+              this.isInContinuationWindow = false; // Not in continuation window
+              console.log(`[AudioHandler] Creating new interaction - energy sufficient: ${energy.toFixed(4)}`);
+            }
           } else {
             console.log(`[AudioHandler] Skipping interaction - energy too low: ${energy.toFixed(4)} < ${this.calibratedMinAudioEnergy}`);
             // Reset state to avoid creating interaction for this audio
@@ -158,9 +179,10 @@ export class AudioHandler {
           }
         }
 
-        // Create interaction only after energy check passes
+        // Create interaction only after energy check passes and if not a continuation
         if (shouldCreateInteraction) {
-          this.callbacks.onNewInteractionRequested();
+          const newKey = this.callbacks.onNewInteractionRequested();
+          this.currentInteractionKey = newKey;
           this.currentAudioInteractionRegistered = true;
         }
       }
@@ -180,17 +202,30 @@ export class AudioHandler {
             const finalEnergy = this.calculateEnergy(this.speechBuffer);
 
             if (finalEnergy >= this.calibratedMinAudioEnergy) {
-              this.currentAudioInteractionRegistered = false;
-              this.callbacks.onSpeechCaptured(
-                key,
-                [...this.speechBuffer], // Create a copy
-              );
-              console.log(`[AudioHandler] Speech captured - final energy: ${finalEnergy.toFixed(4)}, duration: ${((this.speechBuffer.length / this.INPUT_SAMPLE_RATE) * 1000).toFixed(0)}ms`);
+              // If in continuation window, discard this capture to prevent sending split messages
+              if (this.isInContinuationWindow) {
+                console.log(`[AudioHandler] Discarding continuation speech to prevent split messages - duration: ${((this.speechBuffer.length / this.INPUT_SAMPLE_RATE) * 1000).toFixed(0)}ms`);
+                this.currentAudioInteractionRegistered = false;
+                this.isInContinuationWindow = false; // Reset continuation flag
+                this.speechBuffer = [];
+                // Don't update lastSpeechCapturedTime to allow the continuation window to expire naturally
+              } else {
+                // Normal speech capture
+                this.currentAudioInteractionRegistered = false;
+                this.lastSpeechCapturedTime = Date.now(); // Track when speech was captured for continuation detection
+                this.callbacks.onSpeechCaptured(
+                  key,
+                  [...this.speechBuffer], // Create a copy
+                );
+                console.log(`[AudioHandler] Speech captured - final energy: ${finalEnergy.toFixed(4)}, duration: ${((this.speechBuffer.length / this.INPUT_SAMPLE_RATE) * 1000).toFixed(0)}ms`);
+                this.speechBuffer = [];
+              }
             } else {
               console.log(`[AudioHandler] Discarding speech - final energy too low: ${finalEnergy.toFixed(4)} < ${this.calibratedMinAudioEnergy}`);
               this.currentAudioInteractionRegistered = false;
+              this.isInContinuationWindow = false; // Reset continuation flag
+              this.speechBuffer = [];
             }
-            this.speechBuffer = [];
           } else if (!this.currentAudioInteractionRegistered) {
             // Speech was detected but didn't meet energy threshold, discard
             console.log('[AudioHandler] Discarding low-energy speech buffer');
@@ -227,12 +262,17 @@ export class AudioHandler {
     this.initializePreRollWithSilence();
     // Reset VAD history for clean state in next session
     this.vadResultHistory = [];
+    // Reset continuation window on session end
+    this.lastSpeechCapturedTime = 0;
+    this.currentInteractionKey = '';
+    this.isInContinuationWindow = false;
 
     if (this.speechBuffer.length > 0) {
       // Final energy check before sending
       const finalEnergy = this.calculateEnergy(this.speechBuffer);
 
       if (finalEnergy >= this.calibratedMinAudioEnergy) {
+        this.lastSpeechCapturedTime = Date.now(); // Track speech capture time
         this.callbacks.onSpeechCaptured(
           key,
           [...this.speechBuffer], // Create a copy
