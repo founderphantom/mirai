@@ -9,6 +9,7 @@ workers_dev = false
 
 # Container configuration (Durable Object that runs a container)
 [[containers]]
+name = "voice-agent"
 class_name = "VoiceAgentContainer"
 image = "./Dockerfile"
 max_instances = 10
@@ -25,13 +26,34 @@ class_name = "VoiceAgentContainer"
 tag = "v1"
 new_sqlite_classes = ["VoiceAgentContainer"]
 
-[[migrations]]
-tag = "v2"
-deleted_classes = ["VoiceSession"]
-
-# Environment variables (non-sensitive) - passed to container
+# Environment variables (non-sensitive) - Production
 [vars]
 NODE_ENV = "production"
+WS_APP_PORT = "4000"
+LOG_LEVEL = "debug"
+
+# Local Development Environment
+[env.dev]
+
+# Container configuration
+[[env.dev.containers]]
+name = "voice-agent"
+class_name = "VoiceAgentContainer"
+image = "./Dockerfile"
+max_instances = 10
+
+# Durable Objects bindings
+[[env.dev.durable_objects.bindings]]
+name = "VOICE_AGENT"
+class_name = "VoiceAgentContainer"
+
+# Local dev migration - only v1, skip v2 since VoiceSession doesn't exist locally
+[[env.dev.migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceAgentContainer"]
+
+[env.dev.vars]
+NODE_ENV = "development"
 WS_APP_PORT = "4000"
 LOG_LEVEL = "debug"
 

@@ -5,13 +5,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --env dev --port 4000",
+    "deploy:cf": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy --env production",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test:local": "docker build --target production -t voice-agent-dev . && docker run -p 4000:4000 --env-file .env --rm voice-agent-dev",
+    "test:docker": "docker build --target development -t voice-agent-dev . && docker run -p 4000:4000 --env-file .env --rm voice-agent-dev",
+    "test:local": "pnpm run dev",
     "test": "vitest",
     "format": "prettier --write .",
     "lint": "eslint ."

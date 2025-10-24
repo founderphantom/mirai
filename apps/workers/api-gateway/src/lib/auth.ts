@@ -212,15 +212,15 @@ export function createAuth(env: Env) {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         scope: ['email', 'profile'],
-        // Use custom domain to prevent cross-domain cookie/session issues
-        redirectURI: 'https://miraichat.app/api/auth/callback/google',
+        // Use BETTER_AUTH_URL so it works in both dev and production
+        redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/google`,
       },
       discord: {
         clientId: env.DISCORD_CLIENT_ID,
         clientSecret: env.DISCORD_CLIENT_SECRET,
         scope: ['identify', 'email'],
-        // Use custom domain to prevent cross-domain cookie/session issues
-        redirectURI: 'https://miraichat.app/api/auth/callback/discord',
+        // Use BETTER_AUTH_URL so it works in both dev and production
+        redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/discord`,
       },
     },
 

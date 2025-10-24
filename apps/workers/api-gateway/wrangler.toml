@@ -8,6 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "mirai-production"
 database_id = "d340a610-eac9-4804-bcbb-ccebe7f1adb4"
+migrations_dir = "../../../packages/database-schema/drizzle/migrations"
 
 # R2 Bucket Binding - User Assets (Private)
 [[r2_buckets]]
@@ -49,6 +50,49 @@ LOG_LEVEL = "debug"
 # Using custom domain miraichat.app for consistent session/cookie handling
 BETTER_AUTH_URL = "https://miraichat.app"
 FRONTEND_URL = "https://miraichat.app"
+
+# D1 Database Binding
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "mirai-production"
+database_id = "d340a610-eac9-4804-bcbb-ccebe7f1adb4"
+migrations_dir = "../../../packages/database-schema/drizzle/migrations"
+
+# R2 Bucket Binding - User Assets (Private)
+[[env.dev.r2_buckets]]
+binding = "USER_ASSETS"
+bucket_name = "mirai-user-assets"
+
+# KV Namespace Binding - General Cache
+[[env.dev.kv_namespaces]]
+binding = "CACHE"
+id = "0c8c90fd2bc1430ba95596589f68ae1c"
+
+# KV Namespace Binding - Voice Session Cache (short TTL)
+[[env.dev.kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
+
+# Durable Objects - API Gateway Session Management
+[[env.dev.durable_objects.bindings]]
+name = "VOICE_SESSION"
+class_name = "VoiceSession"
+script_name = "mirai-api-gateway"
+
+# Service Binding - Voice Agent Container
+# Works in local dev when both workers are running with wrangler dev:
+#   - Terminal 1: cd apps/workers/container/voice-agent-template && pnpm dev
+#   - Terminal 2: cd apps/workers/api-gateway && pnpm dev
+[[env.dev.services]]
+binding = "VOICE_AGENT"
+service = "voice-agent-container"
+environment = "dev"
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "debug"
+BETTER_AUTH_URL = "http://localhost:8787"
+FRONTEND_URL = "http://localhost:8787"
 
 # Polar Configuration
 # Organization ID and Product IDs from Polar dashboard
