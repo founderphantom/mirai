@@ -55,6 +55,9 @@ export class AudioHandler {
       });
     }
 
+    // DEBUG: Log incoming audio batch
+    console.log(`[AudioHandler] Received ${message.audio.length} chunks, buffer size: ${this.audioBuffer.length}/${this.FRAME_PER_BUFFER}`);
+
     if (this.audioBuffer.length < this.FRAME_PER_BUFFER) {
       return;
     }
@@ -69,6 +72,9 @@ export class AudioHandler {
       audioChunk,
       SPEECH_THRESHOLD,
     );
+
+    // DEBUG: Log VAD results
+    console.log(`[VAD] Result: ${vadResult}, Buffer: ${this.audioBuffer.length}, Capturing: ${this.isCapturingSpeech}`);
 
     if (this.isCapturingSpeech) {
       this.speechBuffer.push(...audioChunk.data);
@@ -99,6 +105,7 @@ export class AudioHandler {
           // If speech is detected, capture the speech.
           if (speechDetected) {
             this.currentAudioInteractionRegistered = false;
+            console.log(`[AudioHandler] 🎤 Speech captured! Buffer size: ${this.speechBuffer.length} samples (${(this.speechBuffer.length / this.INPUT_SAMPLE_RATE).toFixed(2)}s)`);
             this.callbacks.onSpeechCaptured(
               key,
               [...this.speechBuffer], // Create a copy
@@ -114,6 +121,7 @@ export class AudioHandler {
       if (vadResult !== -1) {
         // Not capturing speech but new chunk has voice activity.
         // Start capturing and prepend pre-roll to avoid clipped onset
+        console.log(`[AudioHandler] 🗣️  Speech detected! Starting capture with ${this.PRE_ROLL_MAX_SAMPLES} pre-roll samples`);
         this.isCapturingSpeech = true;
         this.speechBuffer.push(...this.preRollBuffer);
         this.initializePreRollWithSilence();
@@ -129,12 +137,14 @@ export class AudioHandler {
   }
 
   endAudioSession(key: string): void {
+    console.log(`[AudioHandler] 🛑 Audio session ended. Speech buffer: ${this.speechBuffer.length} samples`);
     this.pauseDuration = 0;
     this.isCapturingSpeech = false;
     this.currentAudioInteractionRegistered = false;
     this.initializePreRollWithSilence();
 
     if (this.speechBuffer.length > 0) {
+      console.log(`[AudioHandler] 📤 Sending remaining speech buffer to Inworld`);
       this.callbacks.onSpeechCaptured(
         key,
         [...this.speechBuffer], // Create a copy
