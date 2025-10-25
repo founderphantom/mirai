@@ -7,6 +7,7 @@ interface Env {
   ASSETS: Fetcher
   PUBLIC_ASSETS: R2Bucket
   API_GATEWAY: Fetcher
+  VITE_ENVIRONMENT?: string
 }
 
 export default {
@@ -15,7 +16,9 @@ export default {
     const pathname = url.pathname
 
     // Proxy API requests to API Gateway using service binding
-    if (pathname.startsWith('/api/')) {
+    // NOTE: In production, frontend should connect directly to api.miraichat.app
+    // This proxy is only for local development to avoid CORS issues
+    if (pathname.startsWith('/api/') && env.VITE_ENVIRONMENT === 'development') {
       return env.API_GATEWAY.fetch(request)
     }
 

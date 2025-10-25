@@ -1,13 +1,15 @@
 /**
  * Voice Session Manager
  *
- * Manages voice session lifecycle with the API Gateway via service binding
- *
- * Note: Uses relative paths - worker proxies /api/* to API Gateway internally
+ * Manages voice session lifecycle with the API Gateway
+ * Uses VITE_API_URL for direct connection to API Gateway
  */
 
 import { authClient } from '@/lib/auth'
 import type { Character } from '../api/characters'
+
+// Get API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
 
 export interface VoiceSession {
   sessionKey: string
@@ -31,8 +33,7 @@ export class VoiceSessionManager {
       throw new Error('Not authenticated')
     }
 
-    // Use relative path - worker proxies to API Gateway via service binding
-    const response = await fetch('/api/voice/session/start', {
+    const response = await fetch(`${API_BASE_URL}/api/voice/session/start`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,8 +66,7 @@ export class VoiceSessionManager {
       throw new Error('Not authenticated')
     }
 
-    // Use relative path - worker proxies to API Gateway via service binding
-    const response = await fetch(`/api/voice/session/${sessionKey}/end`, {
+    const response = await fetch(`${API_BASE_URL}/api/voice/session/${sessionKey}/end`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,6 +88,14 @@ export class VoiceSessionManager {
    * Constructs proper WebSocket URL based on current page protocol
    */
   getWebSocketUrl(sessionKey: string): string {
+    // In development, use environment variable to avoid protocol issues
+    const wsBaseUrl = import.meta.env.VITE_WS_URL
+
+    if (wsBaseUrl) {
+      return `${wsBaseUrl}/api/voice/ws?sessionKey=${sessionKey}`
+    }
+
+    // Production: Auto-detect from page protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     return `${protocol}//${host}/api/voice/ws?sessionKey=${sessionKey}`

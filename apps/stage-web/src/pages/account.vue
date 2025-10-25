@@ -4,6 +4,9 @@ import { useSession, authClient } from '@/lib/auth'
 import { useRouter } from 'vue-router'
 import { openCustomerPortal, getSubscription, type SubscriptionResponse } from '@/services/api/payments'
 
+// Get API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
+
 const router = useRouter()
 const sessionData = useSession()
 const session = computed(() => sessionData.value.data)
@@ -162,7 +165,7 @@ async function handleUploadAvatar() {
     formData.append('avatar', avatarFile.value)
 
     // Upload to API Gateway
-    const response = await fetch('/api/assets/avatar', {
+    const response = await fetch(`${API_BASE_URL}/api/assets/avatar`, {
       method: 'POST',
       body: formData,
       credentials: 'include',

@@ -4,6 +4,9 @@
  * Frontend utilities for Polar payment integration
  */
 
+// Get API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
+
 export interface CheckoutRequest {
   tier: 'pro' | 'max'
   billingCycle?: 'monthly' | 'yearly'
@@ -66,7 +69,7 @@ export async function createCheckout(
   request: CheckoutRequest,
 ): Promise<CheckoutResponse> {
   try {
-    const response = await fetch('/api/payments/checkout', {
+    const response = await fetch(`${API_BASE_URL}/api/payments/checkout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -92,7 +95,7 @@ export async function createCheckout(
  */
 export async function getCustomerPortal(): Promise<PortalResponse> {
   try {
-    const response = await fetch('/api/payments/portal', {
+    const response = await fetch(`${API_BASE_URL}/api/payments/portal`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -116,7 +119,7 @@ export async function getCustomerPortal(): Promise<PortalResponse> {
  */
 export async function getSubscription(): Promise<SubscriptionResponse> {
   try {
-    const response = await fetch('/api/payments/subscription', {
+    const response = await fetch(`${API_BASE_URL}/api/payments/subscription`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -141,7 +144,7 @@ export async function getSubscription(): Promise<SubscriptionResponse> {
  */
 export async function trackUsage(request: UsageRequest): Promise<UsageResponse> {
   try {
-    const response = await fetch('/api/payments/usage', {
+    const response = await fetch(`${API_BASE_URL}/api/payments/usage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

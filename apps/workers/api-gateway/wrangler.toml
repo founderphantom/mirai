@@ -26,10 +26,10 @@ binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
 
 # Durable Objects - API Gateway Session Management
+# Note: script_name is omitted since VoiceSession is defined in this same worker
 [[durable_objects.bindings]]
 name = "VOICE_SESSION"
 class_name = "VoiceSession"
-script_name = "mirai-api-gateway"
 
 # Service Binding - Voice Agent Worker
 # Binds to the worker, which internally proxies to its container
@@ -46,9 +46,9 @@ new_sqlite_classes = ["VoiceSession"]
 [vars]
 ENVIRONMENT = "production"
 LOG_LEVEL = "debug"
-# BETTER_AUTH_URL should match your production domain to prevent OAuth state mismatch
-# Using custom domain miraichat.app for consistent session/cookie handling
-BETTER_AUTH_URL = "https://miraichat.app"
+# BETTER_AUTH_URL should match your API domain for OAuth callbacks
+# Using api.miraichat.app since we're bypassing the stage-web proxy
+BETTER_AUTH_URL = "https://api.miraichat.app"
 FRONTEND_URL = "https://miraichat.app"
 
 # D1 Database Binding
@@ -74,10 +74,10 @@ binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
 
 # Durable Objects - API Gateway Session Management
+# Note: script_name is omitted for local dev since VoiceSession is in the same worker
 [[env.dev.durable_objects.bindings]]
 name = "VOICE_SESSION"
 class_name = "VoiceSession"
-script_name = "mirai-api-gateway"
 
 # Service Binding - Voice Agent Container
 # Works in local dev when both workers are running with wrangler dev:

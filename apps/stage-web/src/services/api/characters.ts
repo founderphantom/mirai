@@ -3,6 +3,9 @@
  * Handles all character-related API calls to the API Gateway
  */
 
+// Get API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
+
 // Character interfaces
 
 /**
@@ -51,7 +54,7 @@ export interface GetCharactersResponse {
  */
 export async function getCharacters(): Promise<GetCharactersResponse> {
   try {
-    const response = await fetch('/api/characters', {
+    const response = await fetch(`${API_BASE_URL}/api/characters`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -76,7 +79,7 @@ export async function getCharacters(): Promise<GetCharactersResponse> {
  */
 export async function getCharacter(characterId: string): Promise<Character> {
   try {
-    const response = await fetch(`/api/characters/${characterId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/characters/${characterId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -102,7 +105,7 @@ export async function getCharacter(characterId: string): Promise<Character> {
  */
 export async function getPresetCharacters(): Promise<GetCharactersResponse> {
   try {
-    const response = await fetch('/api/characters/presets', {
+    const response = await fetch(`${API_BASE_URL}/api/characters/presets`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

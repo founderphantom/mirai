@@ -55,7 +55,7 @@ async function resendVerificationEmail() {
   try {
     await authClient.sendVerificationEmail({
       email: email.value,
-      callbackURL: '/dashboard',
+      callbackURL: `${window.location.origin}/dashboard`,
     })
 
     alert('Verification email sent! Please check your inbox.')
@@ -74,7 +74,7 @@ async function signInWithGoogle() {
   try {
     await authClient.signIn.social({
       provider: 'google',
-      callbackURL: '/dashboard',
+      callbackURL: `${window.location.origin}/dashboard`,
     })
   } catch (err) {
     error.value = 'Google sign-in failed'
@@ -90,7 +90,7 @@ async function signInWithDiscord() {
   try {
     await authClient.signIn.social({
       provider: 'discord',
-      callbackURL: '/dashboard',
+      callbackURL: `${window.location.origin}/dashboard`,
     })
   } catch (err) {
     error.value = 'Discord sign-in failed'

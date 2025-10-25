@@ -175,7 +175,10 @@ export class VoiceSessionService {
     )
 
     // 5. Store session in D1
-    const websocketUrl = `wss://${this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')}/api/voice/ws?sessionKey=${sessionKey}`
+    // Use ws:// for http and wss:// for https (auto-detect from BETTER_AUTH_URL)
+    const protocol = this.env.BETTER_AUTH_URL.startsWith('https://') ? 'wss://' : 'ws://'
+    const host = this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')
+    const websocketUrl = `${protocol}${host}/api/voice/ws?sessionKey=${sessionKey}`
 
     const newSession: NewVoiceSession = {
       id: sessionKey,

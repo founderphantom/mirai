@@ -44,9 +44,15 @@ export function createAuth(env: Env) {
       'https://mirai-api-gateway.founder-968.workers.dev',
       'https://miraichat.app',
       'https://www.miraichat.app',
+      'https://api.miraichat.app',
       'http://localhost:3000',
       'http://localhost:5173',
+      'http://localhost:4337',
     ],
+    advanced: {
+      // Redirect to frontend URL after OAuth, not API URL
+      defaultRedirectURL: env.FRONTEND_URL,
+    },
 
     // Email & Password Authentication
     emailAndPassword: {

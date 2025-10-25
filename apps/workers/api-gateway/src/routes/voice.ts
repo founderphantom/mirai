@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../types/env'
+import type { VoiceSessionData } from '../types/session'
 import { VoiceSessionService } from '../services/voice'
 
 const voiceRoutes = new Hono<HonoEnv>()
@@ -155,7 +156,7 @@ voiceRoutes.get('/ws', async (c) => {
     }
 
     // 2. Validate session from KV cache (optimized: get as JSON directly)
-    const sessionData = await c.env.SESSION_CACHE.get(`session:${sessionKey}`, { type: 'json' })
+    const sessionData = await c.env.SESSION_CACHE.get<VoiceSessionData>(`session:${sessionKey}`, { type: 'json' })
 
     if (!sessionData) {
       console.error('[VOICE_WS] Invalid or expired session:', sessionKey)

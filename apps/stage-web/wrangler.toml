@@ -19,8 +19,13 @@ service = "mirai-api-gateway"
 # Environment variables (non-sensitive) - Production
 [vars]
 VITE_ENVIRONMENT = "production"
-VITE_API_URL = "https://mirai-api-gateway.founder-968.workers.dev"
-VITE_WS_URL = "wss://mirai-api-gateway.founder-968.workers.dev"
+# Use direct connection to api-gateway for lowest latency
+# OPTION A: Subdomain approach (recommended)
+VITE_API_URL = "https://api.miraichat.app"
+VITE_WS_URL = "wss://api.miraichat.app"
+# OPTION B: Path-based approach (alternative)
+# VITE_API_URL = "https://miraichat.app"
+# VITE_WS_URL = "wss://miraichat.app"
 VITE_AIRI_WS_URL = ""
 LOG_LEVEL = "info"
 
@@ -36,8 +41,8 @@ service = "mirai-api-gateway"
 
 [env.dev.vars]
 VITE_ENVIRONMENT = "development"
-VITE_API_URL = "http://localhost:8787"
-VITE_WS_URL = "ws://localhost:8787"
+VITE_API_URL = "http://localhost:4337"
+VITE_WS_URL = "ws://localhost:4337"
 VITE_AIRI_WS_URL = ""
 LOG_LEVEL = "debug"
 
