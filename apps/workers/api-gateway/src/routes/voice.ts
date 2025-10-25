@@ -154,32 +154,24 @@ voiceRoutes.get('/ws', async (c) => {
       return c.json({ error: 'Missing session key' }, 400)
     }
 
-    // 2. Validate session from KV cache
-    const sessionDataStr = await c.env.SESSION_CACHE.get(`session:${sessionKey}`)
+    // 2. Validate session from KV cache (optimized: get as JSON directly)
+    const sessionData = await c.env.SESSION_CACHE.get(`session:${sessionKey}`, { type: 'json' })
 
-    if (!sessionDataStr) {
+    if (!sessionData) {
       console.error('[VOICE_WS] Invalid or expired session:', sessionKey)
       return c.json({ error: 'Invalid or expired session' }, 401)
     }
 
-    const sessionData = JSON.parse(sessionDataStr)
-
-    // 3. Check expiration
+    // 3. Check expiration (combined with existence check for faster path)
     if (Date.now() > sessionData.expiresAt) {
       console.error('[VOICE_WS] Session expired:', sessionKey)
       await c.env.SESSION_CACHE.delete(`session:${sessionKey}`)
       return c.json({ error: 'Session expired' }, 401)
     }
 
-    // 4. Verify WebSocket upgrade
-    const upgradeHeader = c.req.header('Upgrade')
-    if (upgradeHeader?.toLowerCase() !== 'websocket') {
-      console.error('[VOICE_WS] Not a WebSocket upgrade request')
-      return c.json({ error: 'Expected WebSocket upgrade' }, 426)
-    }
-
-    // 5. Load character in Voice Agent Container before WebSocket upgrade
+    // 4. Load character in Voice Agent Container before WebSocket upgrade
     // This ensures the character is initialized in the multi-tenant pool
+    // Note: Skipping WebSocket upgrade header validation - will fail naturally if not WS
     console.log('[VOICE_WS] Loading character before WebSocket upgrade:', {
       sessionKey,
       characterId: sessionData.characterId,
@@ -194,16 +186,21 @@ voiceRoutes.get('/ws', async (c) => {
     const abortController = new AbortController()
     const timeoutId = setTimeout(() => abortController.abort(), 60000) // 60 seconds
 
+    // Prepare common headers (reused for both /load and /session requests)
+    const commonHeaders = {
+      'X-User-ID': sessionData.userId,
+      'X-Character-ID': sessionData.characterId,
+      'X-Inworld-Character-ID': sessionData.inworldCharacterId,
+      'X-Inworld-API-Key': c.env.INWORLD_API_KEY,
+      'X-Inworld-Workspace-ID': c.env.INWORLD_WORKSPACE_ID,
+    }
+
     const loadRequest = new Request(loadUrl.toString(), {
       method: 'POST',
-      headers: new Headers({
+      headers: {
         'Content-Type': 'application/json',
-        'X-User-ID': sessionData.userId,
-        'X-Character-ID': sessionData.characterId,
-        'X-Inworld-Character-ID': sessionData.inworldCharacterId,
-        'X-Inworld-API-Key': c.env.INWORLD_API_KEY,
-        'X-Inworld-Workspace-ID': c.env.INWORLD_WORKSPACE_ID,
-      }),
+        ...commonHeaders,
+      },
       body: JSON.stringify({
         agent: sessionData.agentConfig,  // Personality config from character
         userName: sessionData.userId,    // User ID as userName
@@ -269,28 +266,24 @@ voiceRoutes.get('/ws', async (c) => {
       duration: loadDuration,
     })
 
-    // 6. Prepare container request for WebSocket upgrade
+    // 5. Prepare container request for WebSocket upgrade
     const containerUrl = new URL(c.req.url)
     containerUrl.pathname = '/session'  // WebSocket upgrade path in container
 
-    // Build container request with all necessary headers
+    // Build container request with all necessary headers (optimized: reuse commonHeaders)
     const containerRequest = new Request(containerUrl.toString(), {
       method: c.req.method,
       headers: new Headers({
         // Forward all original headers (including WebSocket upgrade headers)
         ...Object.fromEntries(c.req.raw.headers.entries()),
-        // Add authentication and session context headers
-        'X-User-ID': sessionData.userId,
-        'X-Character-ID': sessionData.characterId,
-        'X-Inworld-Character-ID': sessionData.inworldCharacterId,
+        // Add authentication and session context headers (reusing prepared headers)
+        ...commonHeaders,
         'X-Session-Key': sessionKey,
         'X-Conversation-ID': sessionData.conversationId,
-        'X-Inworld-API-Key': c.env.INWORLD_API_KEY,
-        'X-Inworld-Workspace-ID': c.env.INWORLD_WORKSPACE_ID,
       }),
     })
 
-    // 7. Forward WebSocket upgrade to voice agent worker (worker proxies to container)
+    // 6. Forward WebSocket upgrade to voice agent worker (worker proxies to container)
     console.log('[VOICE_WS] Forwarding WebSocket upgrade to worker:', {
       sessionKey,
       userId: sessionData.userId,

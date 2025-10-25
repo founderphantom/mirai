@@ -37,9 +37,6 @@ export interface VoiceStreamCallbacks {
   onError?: (error: string) => void
   onOpen?: () => void
   onClose?: () => void
-  onCalibrationStart?: () => void
-  onCalibrationProgress?: (progress: number, message: string) => void
-  onCalibrationComplete?: (result: any) => void
 }
 
 export class VoiceStreamClient {
@@ -163,7 +160,8 @@ export class VoiceStreamClient {
       source.connect(this.scriptProcessor)
       this.scriptProcessor.connect(this.captureAudioContext.destination)
 
-      // Send batched audio every 100ms (10 times/sec) - matches Inworld template
+      // Send batched audio every 75ms (~13 times/sec) - optimized for lower latency
+      // Trade-off: More frequent messages but 25ms faster response
       let audioChunksSent = 0
       this.sendInterval = setInterval(() => {
         if (this.audioBuffer.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
@@ -187,7 +185,7 @@ export class VoiceStreamClient {
             console.error('[VoiceStream] Failed to send audio batch:', error)
           }
         }
-      }, 100)
+      }, 75)
 
       console.log('[VoiceStream] Audio capture started successfully with interval-based batching')
     } catch (error) {
@@ -399,21 +397,6 @@ export class VoiceStreamClient {
           } else {
             console.warn('[VoiceStream] AUDIO message missing audio.chunk:', message)
           }
-          break
-
-        case 'calibration_start':
-          console.log('[VoiceStream] Calibration started')
-          this.callbacks.onCalibrationStart?.()
-          break
-
-        case 'calibration_progress':
-          console.log('[VoiceStream] Calibration progress:', message.progress, message.message)
-          this.callbacks.onCalibrationProgress?.(message.progress, message.message)
-          break
-
-        case 'calibration_complete':
-          console.log('[VoiceStream] Calibration complete:', message.result)
-          this.callbacks.onCalibrationComplete?.(message.result)
           break
 
         default:
