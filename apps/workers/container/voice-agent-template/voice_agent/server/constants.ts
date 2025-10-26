@@ -1,3 +1,5 @@
+// Fallback voice ID when character doesn't specify one in personalityConfig.voiceConfig.voiceId
+// Each character should define their own voiceId for unique voice identity
 export const DEFAULT_VOICE_ID = 'Pixie';
 export const DEFAULT_LLM_MODEL_NAME = 'ministral-8b-latest';
 export const DEFAULT_PROVIDER = 'mistral';

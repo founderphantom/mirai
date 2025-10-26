@@ -110,6 +110,7 @@ export interface PersonalityConfig {
   dialogueStyle: string
   adjectives: string[]
   voiceConfig?: {
+    voiceId?: string // Inworld voice ID (e.g., 'Pixie', 'Stella', 'Atlas')
     pitch?: number
     speed?: number
     emotionRange?: 'low' | 'medium' | 'high'

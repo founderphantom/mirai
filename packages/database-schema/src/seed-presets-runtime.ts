@@ -8,6 +8,27 @@
  * 3. The Runtime creates the character on-the-fly during conversations
  *
  * This script simply adds preset characters to the database with their configurations.
+ *
+ * ---
+ * Available Inworld Voice IDs (Common Options):
+ *
+ * Female Voices:
+ * - Pixie: Bright, cheerful, energetic - ideal for friendly, upbeat characters
+ * - Stella: Cool, edgy, confident - perfect for bold, assertive characters
+ * - Aurora: Soft, gentle, warm - great for nurturing, kind characters
+ * - Nova: Professional, clear, articulate - suited for intelligent, composed characters
+ *
+ * Male Voices:
+ * - Atlas: Deep, authoritative, commanding - ideal for wise, strong characters
+ * - Orion: Warm, friendly, approachable - perfect for supportive, caring characters
+ * - Titan: Strong, powerful, intense - great for heroic, protective characters
+ *
+ * Neutral/Versatile Voices:
+ * - Echo: Balanced, versatile, adaptable - works for various character types
+ * - Prism: Calm, soothing, meditative - ideal for peaceful, thoughtful characters
+ *
+ * Note: Voice IDs are set in personalityConfig.voiceConfig.voiceId
+ * If not specified, falls back to DEFAULT_VOICE_ID (Pixie) in constants.ts
  */
 
 import { drizzle } from 'drizzle-orm/d1'
@@ -40,6 +61,7 @@ const PRESET_CHARACTERS = [
       dialogueStyle: 'Cheerful, friendly, and upbeat with a touch of playfulness',
       adjectives: ['Cheerful', 'Energetic', 'Helpful', 'Curious', 'Optimistic'],
       voiceConfig: {
+        voiceId: 'Pixie', // Bright, cheerful, energetic voice
         pitch: 1.1,
         speed: 1.0,
         emotionRange: 'high' as const,
@@ -67,6 +89,7 @@ const PRESET_CHARACTERS = [
       dialogueStyle: 'Edgy and direct with a gothic flair, cool exterior hiding warmth underneath',
       adjectives: ['Edgy', 'Loyal', 'Mysterious', 'Bold', 'Gothic', 'Protective'],
       voiceConfig: {
+        voiceId: 'Stella', // Cool, edgy, confident female voice
         pitch: 0.95, // Slightly lower for cool/edgy tone
         speed: 1.0, // Normal pace with attitude
         emotionRange: 'high' as const, // Expressive when emotions show through
@@ -92,6 +115,7 @@ const PRESET_CHARACTERS = [
       dialogueStyle: 'Calm, mysterious, and wise with a deep voice',
       adjectives: ['Wise', 'Mysterious', 'Calm', 'Thoughtful', 'Patient'],
       voiceConfig: {
+        voiceId: 'Atlas', // Deep, authoritative masculine voice
         pitch: 0.8, // Lower pitch for more masculine voice
         speed: 0.9, // Slower, more deliberate
         emotionRange: 'medium' as const,
