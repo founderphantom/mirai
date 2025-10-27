@@ -31,30 +31,35 @@ export default {
       return env.VOICE_AGENT.fetch(request)
     }
 
-    // List of large assets stored in R2
-    const r2AssetPaths = [
+    // Specific large assets stored in R2 (fonts, WASM binaries)
+    const specificR2Assets = [
       '/assets/cjkFonts_allseto_v1.11-ByBdljxl.ttf',
       '/assets/XiaolaiSC-Regular-SNWuh554.ttf',
       '/assets/duckdb-coi-CSr8FQO4.wasm',
       '/assets/duckdb-eh-BJOC5S4x.wasm',
       '/assets/duckdb-mvp-8HYqhb4i.wasm',
       '/assets/ort-wasm-simd-threaded.jsep-B0T3yYHD.wasm',
-      '/assets/live2d/models/hiyori_pro_zh.zip',
-      '/assets/live2d/models/hiyori_free_zh.zip',
-      '/assets/live2d/models/blackwolf.zip',
-      '/assets/live2d/models/blackwolf/preview.png',
-      '/assets/vrm/models/AvatarSample-A/AvatarSample_A.vrm',
-      '/assets/vrm/models/AvatarSample-B/AvatarSample_B.vrm',
     ]
 
-    // Check if this is a large asset request - serve from R2
-    if (r2AssetPaths.includes(pathname)) {
+    // Check if this should be served from R2
+    // - Specific assets (fonts, WASM) - hardcoded list
+    // - All Live2D models - pattern matching
+    // - All VRM models - pattern matching
+    const shouldServeFromR2 =
+      specificR2Assets.includes(pathname) ||
+      pathname.startsWith('/assets/live2d/models/') ||
+      pathname.startsWith('/assets/vrm/models/')
+
+    if (shouldServeFromR2) {
       const r2Key = pathname.slice(1) // Remove leading slash
       const object = await env.PUBLIC_ASSETS.get(r2Key)
 
       if (object === null) {
+        console.log(`[stage-web] Asset not found in R2: ${r2Key}`)
         return new Response('Asset not found', { status: 404 })
       }
+
+      console.log(`[stage-web] Serving from R2: ${r2Key} (${object.size} bytes)`)
 
       const headers = new Headers()
       object.writeHttpMetadata(headers)

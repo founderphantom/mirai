@@ -72,7 +72,7 @@ const PRESET_CHARACTERS = [
     id: 'preset-blackwolf-001',
     displayName: 'BlackWolf',
     description: 'A gothic wolf girl with an edgy attitude and fiercely loyal heart',
-    live2dModelKey: 'blackwolf.zip',
+    live2dModelKey: 'blackwolf/blackwolf.zip',
     avatarThumbnail: '/assets/live2d/models/blackwolf/preview.png',
 
     // This is just a reference ID - not actually used by Runtime
@@ -89,7 +89,7 @@ const PRESET_CHARACTERS = [
       dialogueStyle: 'Edgy and direct with a gothic flair, cool exterior hiding warmth underneath',
       adjectives: ['Edgy', 'Loyal', 'Mysterious', 'Bold', 'Gothic', 'Protective'],
       voiceConfig: {
-        voiceId: 'Stella', // Cool, edgy, confident female voice
+        voiceId: 'Ashley', // Cool, edgy, confident female voice
         pitch: 0.95, // Slightly lower for cool/edgy tone
         speed: 1.0, // Normal pace with attitude
         emotionRange: 'high' as const, // Expressive when emotions show through
@@ -100,7 +100,7 @@ const PRESET_CHARACTERS = [
     id: 'preset-crimsonkitsune-001',
     displayName: 'Crimson Kitsune',
     description: 'A mysterious and wise companion with a calm demeanor',
-    live2dModelKey: 'CrimsonKitsune.zip',
+    live2dModelKey: 'crimsonkitsune/CrimsonKitsune.zip',
     avatarThumbnail: '/assets/live2d/models/crimsonkitsune/preview.png',
 
     inworldCharacterId: 'runtime-character-crimsonkitsune',
@@ -115,7 +115,7 @@ const PRESET_CHARACTERS = [
       dialogueStyle: 'Calm, mysterious, and wise with a deep voice',
       adjectives: ['Wise', 'Mysterious', 'Calm', 'Thoughtful', 'Patient'],
       voiceConfig: {
-        voiceId: 'Atlas', // Deep, authoritative masculine voice
+        voiceId: 'Edward', // Deep, authoritative masculine voice
         pitch: 0.8, // Lower pitch for more masculine voice
         speed: 0.9, // Slower, more deliberate
         emotionRange: 'medium' as const,
