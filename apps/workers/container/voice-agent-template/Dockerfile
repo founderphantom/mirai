@@ -97,6 +97,14 @@ RUN groupadd --gid 1001 nodejs && \
 
 USER nodejs
 
+# Set production environment variables (updated 2025-10-27)
+ENV NODE_ENV=production
+ENV WS_APP_PORT=4000
+ENV LOG_LEVEL=info
+ENV ALLOWED_ORIGINS=https://miraichat.app,https://app.miraichat.app
+ENV VAD_MODEL_PATH=/app/models/silero_vad.onnx
+ENV GRAPH_VISUALIZATION_ENABLED=false
+
 # Expose port for Cloudflare Container
 EXPOSE 4000
 

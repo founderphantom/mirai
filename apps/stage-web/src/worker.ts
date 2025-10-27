@@ -7,6 +7,7 @@ interface Env {
   ASSETS: Fetcher
   PUBLIC_ASSETS: R2Bucket
   API_GATEWAY: Fetcher
+  VOICE_AGENT: Fetcher
   VITE_ENVIRONMENT?: string
 }
 
@@ -16,10 +17,18 @@ export default {
     const pathname = url.pathname
 
     // Proxy API requests to API Gateway using service binding
-    // NOTE: In production, frontend should connect directly to api.miraichat.app
-    // This proxy is only for local development to avoid CORS issues
-    if (pathname.startsWith('/api/') && env.VITE_ENVIRONMENT === 'development') {
+    // Uses internal Cloudflare routing (~0.5-2ms latency vs 5-10ms for HTTPS)
+    if (pathname.startsWith('/api/')) {
+      console.log('[stage-web] Proxying API request to API Gateway:', pathname)
       return env.API_GATEWAY.fetch(request)
+    }
+
+    // Proxy WebSocket requests to Voice Agent using service binding
+    // Uses internal Cloudflare routing (~0.5-2ms latency vs 5-10ms for WebSocket)
+    // This provides the lowest possible latency for real-time voice streaming
+    if (pathname === '/ws') {
+      console.log('[stage-web] Proxying WebSocket to Voice Agent')
+      return env.VOICE_AGENT.fetch(request)
     }
 
     // List of large assets stored in R2

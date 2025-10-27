@@ -20,6 +20,12 @@ max_instances = 10
 name = "VOICE_AGENT"
 class_name = "VoiceAgentContainer"
 
+# KV Namespace Binding - Session Cache (shared with API Gateway)
+# Used for validating session keys from direct WebSocket connections
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
+
 # Migrations have been applied - keeping for reference
 # You can remove these after successful deployment
 [[migrations]]
@@ -47,6 +53,11 @@ max_instances = 10
 name = "VOICE_AGENT"
 class_name = "VoiceAgentContainer"
 
+# KV Namespace Binding - Session Cache (shared with API Gateway)
+[[env.dev.kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
+
 # Local dev migration - only v1, skip v2 since VoiceSession doesn't exist locally
 [[env.dev.migrations]]
 tag = "v1"
@@ -61,3 +72,15 @@ LOG_LEVEL = "debug"
 [observability]
 enabled = true
 head_sampling_rate = 1.0
+
+# Custom domain for direct client connections
+# Configure this in Cloudflare Dashboard after deployment:
+# Workers & Pages → voice-agent-container → Settings → Custom Domains
+# Note: DNS record will be automatically created by Cloudflare
+[route]
+pattern = "voice.miraichat.app"
+custom_domain = true
+
+# Required Secrets (set with: wrangler secret put SECRET_NAME)
+# - INWORLD_API_KEY              (required) From Inworld AI dashboard
+# - INWORLD_WORKSPACE_ID         (required) From Inworld AI dashboard

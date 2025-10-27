@@ -16,16 +16,20 @@ bucket_name = "mirai-assets"
 binding = "API_GATEWAY"
 service = "mirai-api-gateway"
 
+# Service Binding - Voice Agent Worker (for WebSocket proxy)
+[[services]]
+binding = "VOICE_AGENT"
+service = "voice-agent-container"
+
 # Environment variables (non-sensitive) - Production
 [vars]
 VITE_ENVIRONMENT = "production"
-# Use direct connection to api-gateway for lowest latency
-# OPTION A: Subdomain approach (recommended)
-VITE_API_URL = "https://api.miraichat.app"
-VITE_WS_URL = "wss://api.miraichat.app"
-# OPTION B: Path-based approach (alternative)
-# VITE_API_URL = "https://miraichat.app"
-# VITE_WS_URL = "wss://miraichat.app"
+# Unified domain approach - all traffic through stage-web with service bindings
+# stage-web proxies /api/* to API_GATEWAY and /ws to VOICE_AGENT
+# Uses internal Cloudflare routing (~0.5-2ms) instead of public HTTPS (~5-10ms)
+# This provides the lowest possible latency for real-time voice streaming
+VITE_API_URL = "https://miraichat.app"
+VITE_WS_URL = "wss://miraichat.app"
 VITE_AIRI_WS_URL = ""
 LOG_LEVEL = "info"
 
@@ -38,6 +42,13 @@ bucket_name = "mirai-assets"
 [[env.dev.services]]
 binding = "API_GATEWAY"
 service = "mirai-api-gateway"
+environment = "dev"
+
+# Service Binding - Voice Agent Worker (for WebSocket proxy)
+[[env.dev.services]]
+binding = "VOICE_AGENT"
+service = "voice-agent-container"
+environment = "dev"
 
 [env.dev.vars]
 VITE_ENVIRONMENT = "development"
