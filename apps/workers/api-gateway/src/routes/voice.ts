@@ -5,9 +5,11 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
+import { drizzle } from 'drizzle-orm/d1'
 import type { HonoEnv } from '../types/env'
 import type { VoiceSessionData } from '../types/session'
 import { VoiceSessionService } from '../services/voice'
+import { checkUsageQuota } from '../services/usage'
 
 const voiceRoutes = new Hono<HonoEnv>()
 
@@ -35,6 +37,29 @@ voiceRoutes.post(
     }
 
     const { characterId } = c.req.valid('json')
+
+    // Check voice minute quota before creating session
+    const db = drizzle(c.env.DB)
+    const quotaCheck = await checkUsageQuota(db, user.id, 'voice_minutes', 1)
+
+    if (!quotaCheck.allowed) {
+      console.log('[VOICE] Session start blocked - quota exceeded:', {
+        userId: user.id,
+        usage: quotaCheck.usage,
+      })
+
+      return c.json(
+        {
+          error: 'Voice minutes quota exceeded',
+          message: quotaCheck.reason || 'You have reached your voice minute limit',
+          usage: quotaCheck.usage,
+          upgradeUrl: 'https://miraichat.app/pricing',
+          action: 'upgrade_required',
+        },
+        403,
+      )
+    }
+
     const service = new VoiceSessionService(c.env)
 
     try {
@@ -170,7 +195,33 @@ voiceRoutes.get('/ws', async (c) => {
       return c.json({ error: 'Session expired' }, 401)
     }
 
-    // 4. Load character in Voice Agent Container before WebSocket upgrade
+    // 4. Check voice minute quota before loading character (defense in depth)
+    const db = drizzle(c.env.DB)
+    const quotaCheck = await checkUsageQuota(db, sessionData.userId, 'voice_minutes', 1)
+
+    if (!quotaCheck.allowed) {
+      console.log('[VOICE_WS] WebSocket connection blocked - quota exceeded:', {
+        userId: sessionData.userId,
+        sessionKey,
+        usage: quotaCheck.usage,
+      })
+
+      // Delete session since user can't use it
+      await c.env.SESSION_CACHE.delete(`session:${sessionKey}`)
+
+      return c.json(
+        {
+          error: 'Voice minutes quota exceeded',
+          message: quotaCheck.reason || 'You have reached your voice minute limit',
+          usage: quotaCheck.usage,
+          upgradeUrl: 'https://miraichat.app/pricing',
+          action: 'upgrade_required',
+        },
+        403,
+      )
+    }
+
+    // 5. Load character in Voice Agent Container before WebSocket upgrade
     // This ensures the character is initialized in the multi-tenant pool
     // Note: Skipping WebSocket upgrade header validation - will fail naturally if not WS
     console.log('[VOICE_WS] Loading character before WebSocket upgrade:', {
@@ -267,7 +318,7 @@ voiceRoutes.get('/ws', async (c) => {
       duration: loadDuration,
     })
 
-    // 5. Prepare container request for WebSocket upgrade
+    // 6. Prepare container request for WebSocket upgrade
     const containerUrl = new URL(c.req.url)
     containerUrl.pathname = '/session'  // WebSocket upgrade path in container
 
@@ -284,7 +335,7 @@ voiceRoutes.get('/ws', async (c) => {
       }),
     })
 
-    // 6. Forward WebSocket upgrade to voice agent worker (worker proxies to container)
+    // 7. Forward WebSocket upgrade to voice agent worker (worker proxies to container)
     console.log('[VOICE_WS] Forwarding WebSocket upgrade to worker:', {
       sessionKey,
       userId: sessionData.userId,

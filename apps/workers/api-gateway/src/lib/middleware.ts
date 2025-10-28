@@ -169,25 +169,13 @@ export function checkVoiceMinutes(requiredMinutes: number = 1) {
     // Get tier limits
     const limits = getTierLimits(userTier)
 
-    // Free tier has no voice access
-    if (limits.voiceMinutes === 0) {
-      return c.json(
-        {
-          error: 'Voice features not available',
-          message: 'Upgrade to Pro or Enterprise to access voice features',
-          requiredTier: ['pro', 'enterprise'],
-        },
-        403,
-      )
-    }
-
     // Enterprise has unlimited
     if (limits.voiceMinutes === -1) {
       await next()
       return
     }
 
-    // Check current usage for Pro tier
+    // Check current usage for all tiers (free and pro)
     // Note: This is simplified - in production you'd query the database
     // to get actual usage from the current billing period
     // The voice session handler will track actual usage
@@ -202,7 +190,7 @@ export function checkVoiceMinutes(requiredMinutes: number = 1) {
 function getTierLimits(tier: string) {
   const limits = {
     free: {
-      voiceMinutes: 0,
+      voiceMinutes: 20,
       characters: 1,
       features: ['basic'],
     },

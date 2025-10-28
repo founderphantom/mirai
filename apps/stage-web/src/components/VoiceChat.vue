@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted, computed, watch } from 'vue'
-import { VoiceSessionManager } from '@/services/voice/VoiceSessionManager'
+import { VoiceSessionManager, type QuotaError } from '@/services/voice/VoiceSessionManager'
 import { VoiceStreamClient } from '@/services/voice/VoiceStreamClient'
 import type { Character } from '@/services/api/characters'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import UpgradePrompt from './UpgradePrompt.vue'
 
 const props = defineProps<{
   character: Character
@@ -26,6 +27,16 @@ const isEndingSession = ref(false) // Prevent duplicate endSession calls
 
 // Error handling with composable
 const { handleWebSocketError, handleApiError, errorMessage, clearError } = useErrorHandler()
+
+// Quota error state
+const showUpgradePrompt = ref(false)
+const quotaErrorData = ref<{
+  message: string
+  usage?: any
+  upgradeUrl?: string
+}>({
+  message: '',
+})
 
 // Chat history
 const messages = ref<Array<{ speaker: string; text: string; timestamp: number }>>([])
@@ -92,9 +103,26 @@ async function startSession() {
     startAudioMonitoring()
   }
   catch (err) {
-    handleApiError(err, 'start session')
+    // Check if this is a quota error
+    const error = err as QuotaError
+    if (error.isQuotaError) {
+      quotaErrorData.value = {
+        message: error.message,
+        usage: error.usage,
+        upgradeUrl: error.upgradeUrl || 'https://miraichat.app/pricing',
+      }
+      showUpgradePrompt.value = true
+      clearError() // Clear generic error since we're showing upgrade prompt
+    } else {
+      handleApiError(err, 'start session')
+    }
     isConnecting.value = false
   }
+}
+
+function handleUpgradePromptClose() {
+  showUpgradePrompt.value = false
+  emit('close')
 }
 
 /**
@@ -385,6 +413,16 @@ watch(messages, () => {
         <button @click="endSession" class="end-btn">End Conversation</button>
       </template>
     </div>
+
+    <!-- Upgrade Prompt Modal -->
+    <UpgradePrompt
+      :show="showUpgradePrompt"
+      :message="quotaErrorData.message"
+      :usage="quotaErrorData.usage"
+      :upgradeUrl="quotaErrorData.upgradeUrl"
+      @close="handleUpgradePromptClose"
+      @upgrade="handleUpgradePromptClose"
+    />
   </div>
 </template>
 

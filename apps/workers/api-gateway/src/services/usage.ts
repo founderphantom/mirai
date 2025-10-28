@@ -282,6 +282,70 @@ export async function checkUsageQuota(
 }
 
 /**
+ * Check usage and return warning level
+ * Returns: 'none' | 'approaching' (80%) | 'exceeded' (100%)
+ */
+export async function checkUsageWarnings(
+  db: ReturnType<typeof drizzle>,
+  userId: string,
+  eventType: 'voice_minutes' | 'characters',
+): Promise<{
+  warningLevel: 'none' | 'approaching' | 'exceeded'
+  usage: any
+  percentUsed: number
+}> {
+  const usage = await getCurrentUsage(db, userId)
+
+  let percentUsed = 0
+  let warningLevel: 'none' | 'approaching' | 'exceeded' = 'none'
+
+  if (eventType === 'voice_minutes') {
+    const { used, limit } = usage.voiceMinutes
+
+    // Unlimited tier has no warnings
+    if (limit === -1) {
+      return {
+        warningLevel: 'none',
+        usage,
+        percentUsed: 0,
+      }
+    }
+
+    percentUsed = (used / limit) * 100
+
+    if (percentUsed >= 100) {
+      warningLevel = 'exceeded'
+    } else if (percentUsed >= 80) {
+      warningLevel = 'approaching'
+    }
+  } else if (eventType === 'characters') {
+    const { used, limit } = usage.characters
+
+    if (limit === -1) {
+      return {
+        warningLevel: 'none',
+        usage,
+        percentUsed: 0,
+      }
+    }
+
+    percentUsed = (used / limit) * 100
+
+    if (percentUsed >= 100) {
+      warningLevel = 'exceeded'
+    } else if (percentUsed >= 80) {
+      warningLevel = 'approaching'
+    }
+  }
+
+  return {
+    warningLevel,
+    usage,
+    percentUsed,
+  }
+}
+
+/**
  * Helper: Get tier limits
  */
 function getTierLimits(tier: string) {

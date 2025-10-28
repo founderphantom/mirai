@@ -18,6 +18,13 @@ export interface VoiceSession {
   expiresAt: number
 }
 
+export interface QuotaError extends Error {
+  isQuotaError: boolean
+  usage?: any
+  upgradeUrl?: string
+  percentUsed?: number
+}
+
 export interface VoiceSessionMetrics {
   durationSeconds: number
   audioSeconds: number
@@ -47,8 +54,26 @@ export class VoiceSessionManager {
     if (!response.ok) {
       const error = await response.json().catch(() => ({
         message: 'Failed to start voice session',
-      })) as { message?: string }
-      throw new Error(error.message || 'Failed to start voice session')
+      })) as {
+        message?: string
+        error?: string
+        usage?: any
+        upgradeUrl?: string
+        action?: string
+      }
+
+      // Handle quota exceeded error (403)
+      if (response.status === 403 && error.action === 'upgrade_required') {
+        const quotaError = new Error(
+          error.message || 'Voice minutes quota exceeded'
+        ) as QuotaError
+        quotaError.isQuotaError = true
+        quotaError.usage = error.usage
+        quotaError.upgradeUrl = error.upgradeUrl
+        throw quotaError
+      }
+
+      throw new Error(error.message || error.error || 'Failed to start voice session')
     }
 
     return response.json()

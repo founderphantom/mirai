@@ -158,66 +158,88 @@ paymentRoutes.get('/portal', async (c) => {
  * Get current user's subscription status
  */
 paymentRoutes.get('/subscription', async (c) => {
+  const userId = c.get('user')?.id
+  if (!userId) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const db = drizzle(c.env.DB)
+
   try {
-    const userId = c.get('user')?.id
-    if (!userId) {
-      return c.json({ error: 'Unauthorized' }, 401)
+    // Get user with subscription tier (critical - must succeed)
+    let userData
+    try {
+      const currentUser = await db
+        .select()
+        .from(user)
+        .where(eq(user.id, userId))
+        .limit(1)
+
+      if (!currentUser.length) {
+        return c.json({ error: 'User not found' }, 404)
+      }
+
+      userData = currentUser[0]
+    } catch (err) {
+      console.error('[PAYMENTS] Failed to fetch user data:', err)
+      throw err // Critical error - cannot continue without user data
     }
 
-    const db = drizzle(c.env.DB)
-
-    // Get user with subscription tier
-    const currentUser = await db
-      .select()
-      .from(user)
-      .where(eq(user.id, userId))
-      .limit(1)
-
-    if (!currentUser.length) {
-      return c.json({ error: 'User not found' }, 404)
+    // Get active subscription (non-critical - free tier has none)
+    let activeSubscription: any[] = []
+    try {
+      activeSubscription = await db
+        .select()
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.userId, userId),
+            eq(subscriptions.status, 'active'),
+          ),
+        )
+        .orderBy(desc(subscriptions.createdAt))
+        .limit(1)
+    } catch (err) {
+      console.error('[PAYMENTS] Failed to fetch subscription (non-critical):', err)
+      // Continue - free tier users don't have subscriptions
     }
 
-    const userData = currentUser[0]
-
-    // Get active subscription
-    const activeSubscription = await db
-      .select()
-      .from(subscriptions)
-      .where(
-        and(
-          eq(subscriptions.userId, userId),
-          eq(subscriptions.status, 'active'),
-        ),
-      )
-      .orderBy(desc(subscriptions.createdAt))
-      .limit(1)
-
-    // Get usage for current billing period
-    // IMPORTANT: Calculate usage even for free tier users (no subscription record)
-    const allUsageEvents = await db
-      .select()
-      .from(usageEvents)
-      .where(
-        and(
-          eq(usageEvents.userId, userId),
-          eq(usageEvents.eventType, 'voice_minutes'),
-        ),
-      )
-
+    // Get usage events (critical for quota enforcement)
     let usageMinutes = 0
+    try {
+      const allUsageEvents = await db
+        .select()
+        .from(usageEvents)
+        .where(
+          and(
+            eq(usageEvents.userId, userId),
+            eq(usageEvents.eventType, 'voice_minutes'),
+          ),
+        )
 
-    if (activeSubscription.length) {
-      // Paid tier: Count usage since current billing period start
-      const subscription = activeSubscription[0]
-      const currentPeriodStart = subscription.currentPeriodStart
+      if (activeSubscription.length) {
+        // Paid tier: Count usage since current billing period start
+        const subscription = activeSubscription[0]
+        const currentPeriodStart = subscription.currentPeriodStart
 
-      usageMinutes = allUsageEvents
-        .filter((event) => event.createdAt >= currentPeriodStart)
-        .reduce((sum, event) => sum + event.quantity, 0)
-    } else {
-      // Free tier or no subscription: Count ALL usage (no billing period reset)
-      usageMinutes = allUsageEvents
-        .reduce((sum, event) => sum + event.quantity, 0)
+        usageMinutes = allUsageEvents
+          .filter((event) => {
+            try {
+              return event.createdAt >= currentPeriodStart
+            } catch {
+              return false // Skip malformed dates
+            }
+          })
+          .reduce((sum, event) => sum + (event.quantity || 0), 0)
+      } else {
+        // Free tier or no subscription: Count ALL usage (no billing period reset)
+        usageMinutes = allUsageEvents
+          .reduce((sum, event) => sum + (event.quantity || 0), 0)
+      }
+    } catch (err) {
+      console.error('[PAYMENTS] Failed to calculate usage (using 0):', err)
+      // Set to 0 - safer than failing the entire request
+      usageMinutes = 0
     }
 
     // Calculate limits based on tier
@@ -235,6 +257,7 @@ paymentRoutes.get('/subscription', async (c) => {
       remaining: voiceMinutesRemaining,
     })
 
+    // Always return 200 with data (even if some queries failed)
     return c.json({
       subscription: activeSubscription.length ? activeSubscription[0] : null,
       tier: userData.subscriptionTier,
@@ -248,14 +271,26 @@ paymentRoutes.get('/subscription', async (c) => {
       limits,
     })
   } catch (error) {
-    console.error('[PAYMENTS] Subscription fetch error:', error)
-    return c.json(
-      {
-        error: 'Failed to fetch subscription',
-        message: error instanceof Error ? error.message : 'Unknown error',
+    console.error('[PAYMENTS] Critical subscription fetch error:', error)
+
+    // Return 200 with minimal data instead of 500 (graceful degradation)
+    return c.json({
+      subscription: null,
+      tier: 'free', // Default to free tier
+      status: null,
+      polarCustomerId: null,
+      usage: {
+        voiceMinutes: 0,
+        voiceMinutesLimit: 20,
+        voiceMinutesRemaining: 20,
       },
-      500,
-    )
+      limits: {
+        voiceMinutes: 20,
+        characters: 1,
+        features: [],
+      },
+      error: 'Partial data returned due to database error',
+    })
   }
 })
 

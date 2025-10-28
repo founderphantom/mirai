@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useSession, authClient } from '@/lib/auth'
 import { useRouter } from 'vue-router'
 import { openCustomerPortal, getSubscription, type SubscriptionResponse } from '@/services/api/payments'
@@ -21,6 +21,7 @@ interface AvatarUploadResponse {
 // Subscription data state
 const subscriptionData = ref<SubscriptionResponse | null>(null)
 const isLoadingSubscription = ref(false)
+const subscriptionError = ref<string | null>(null)
 
 // Computed properties for subscription
 const userSubscriptionTier = computed(() => subscriptionData.value?.tier || 'free')
@@ -45,24 +46,72 @@ const avatarPreview = ref<string | null>(null)
 
 // Fetch subscription data
 async function fetchSubscription() {
-  if (!user.value) return
+  if (!user.value) {
+    console.log('[Account] Skipping subscription fetch - user not loaded')
+    return
+  }
+
+  console.log('[Account] Fetching subscription data...', {
+    userId: user.value.id,
+    userTier: user.value.subscriptionTier,
+  })
 
   isLoadingSubscription.value = true
+  subscriptionError.value = null // Clear previous errors
+
   try {
     subscriptionData.value = await getSubscription()
+    console.log('[Account] Subscription data loaded successfully:', {
+      tier: subscriptionData.value?.tier,
+      hasUsage: !!subscriptionData.value?.usage,
+      voiceMinutes: subscriptionData.value?.usage?.voiceMinutes,
+    })
   } catch (err) {
-    console.error('Failed to fetch subscription:', err)
-    // Don't show error to user, just log it
+    console.error('[Account] Failed to fetch subscription:', err)
+    subscriptionError.value = 'Failed to load subscription data. Please try again.'
+
+    // Set fallback data so usage section still displays with "unknown" state
+    subscriptionData.value = {
+      subscription: null,
+      tier: user.value?.subscriptionTier || 'free',
+      status: user.value?.subscriptionStatus || null,
+      polarCustomerId: user.value?.polarCustomerId || null,
+      usage: {
+        voiceMinutes: 0,
+        voiceMinutesLimit: 20, // Default to free tier limit
+        voiceMinutesRemaining: 0,
+      },
+      limits: {
+        voiceMinutes: 20,
+        characters: 1,
+        features: [],
+      },
+    }
   } finally {
     isLoadingSubscription.value = false
   }
 }
 
+// Watch for user to become available and fetch subscription
+// This handles the race condition where component mounts before auth loads
+watch(
+  () => user.value,
+  async (newUser) => {
+    if (newUser && !subscriptionData.value) {
+      console.log('[Account] User loaded, fetching subscription')
+      await fetchSubscription()
+    }
+  },
+  { immediate: true }, // Check immediately on component mount
+)
+
 onMounted(async () => {
   if (user.value) {
+    console.log('[Account] Component mounted with user already loaded')
     displayName.value = user.value.name || ''
-    // Fetch subscription data
-    await fetchSubscription()
+    // Subscription will be fetched by watcher
+  } else {
+    console.log('[Account] Component mounted, waiting for user to load...')
   }
 })
 
@@ -395,6 +444,13 @@ async function handleManageSubscription() {
 
           <!-- Subscription Card -->
           <div v-else class="subscription-card">
+            <!-- Error Banner (if fetch failed) -->
+            <div v-if="subscriptionError" class="subscription-error">
+              <span class="error-icon">⚠️</span>
+              <span class="error-text">{{ subscriptionError }}</span>
+              <button @click="fetchSubscription" class="retry-btn">Retry</button>
+            </div>
+
             <div class="subscription-info">
               <div class="subscription-tier">
                 <span
@@ -418,13 +474,25 @@ async function handleManageSubscription() {
                   No active subscription
                 </span>
               </div>
-              <!-- Usage Info -->
-              <div v-if="subscriptionData?.usage" class="subscription-usage">
-                <span class="usage-label">Voice Minutes Used:</span>
-                <span class="usage-value">
-                  {{ subscriptionData.usage.voiceMinutes }} /
-                  {{ subscriptionData.usage.voiceMinutesLimit === -1 ? 'Unlimited' : subscriptionData.usage.voiceMinutesLimit }}
-                </span>
+
+              <!-- Usage Info - ALWAYS SHOWN -->
+              <div class="subscription-usage">
+                <template v-if="subscriptionData?.usage">
+                  <span class="usage-label">Voice Minutes Used:</span>
+                  <span
+                    class="usage-value"
+                    :class="{ 'over-limit': subscriptionData.usage.voiceMinutes > subscriptionData.usage.voiceMinutesLimit && subscriptionData.usage.voiceMinutesLimit !== -1 }"
+                  >
+                    {{ subscriptionData.usage.voiceMinutes }} /
+                    {{ subscriptionData.usage.voiceMinutesLimit === -1 ? 'Unlimited' : subscriptionData.usage.voiceMinutesLimit }}
+                  </span>
+                </template>
+                <template v-else-if="subscriptionError">
+                  <span class="usage-label usage-unavailable">Usage data unavailable</span>
+                </template>
+                <template v-else>
+                  <span class="usage-label">Loading usage...</span>
+                </template>
               </div>
             </div>
             <button @click="handleManageSubscription" class="manage-subscription-btn">
@@ -782,15 +850,61 @@ async function handleManageSubscription() {
 /* Subscription Card */
 .subscription-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 1rem;
   padding: 1.5rem;
   background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
   border-radius: 12px;
   border: 2px solid #e2e8f0;
 }
 
+.subscription-error {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.error-icon {
+  font-size: 1.25rem;
+}
+
+.error-text {
+  flex: 1;
+  color: #991b1b;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.retry-btn {
+  padding: 0.375rem 0.875rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #b91c1c;
+}
+
 .subscription-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  gap: 2rem;
+}
+
+.subscription-tier {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -841,6 +955,16 @@ async function handleManageSubscription() {
   font-size: 0.875rem;
   color: #667eea;
   font-weight: 700;
+}
+
+.usage-value.over-limit {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.usage-unavailable {
+  color: #9ca3af;
+  font-style: italic;
 }
 
 .manage-subscription-btn {
