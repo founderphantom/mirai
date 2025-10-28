@@ -193,29 +193,47 @@ paymentRoutes.get('/subscription', async (c) => {
       .limit(1)
 
     // Get usage for current billing period
+    // IMPORTANT: Calculate usage even for free tier users (no subscription record)
+    const allUsageEvents = await db
+      .select()
+      .from(usageEvents)
+      .where(
+        and(
+          eq(usageEvents.userId, userId),
+          eq(usageEvents.eventType, 'voice_minutes'),
+        ),
+      )
+
     let usageMinutes = 0
+
     if (activeSubscription.length) {
+      // Paid tier: Count usage since current billing period start
       const subscription = activeSubscription[0]
       const currentPeriodStart = subscription.currentPeriodStart
 
-      const usage = await db
-        .select()
-        .from(usageEvents)
-        .where(
-          and(
-            eq(usageEvents.userId, userId),
-            eq(usageEvents.eventType, 'voice_minutes'),
-          ),
-        )
-
-      // Sum up usage since current period start
-      usageMinutes = usage
+      usageMinutes = allUsageEvents
         .filter((event) => event.createdAt >= currentPeriodStart)
+        .reduce((sum, event) => sum + event.quantity, 0)
+    } else {
+      // Free tier or no subscription: Count ALL usage (no billing period reset)
+      usageMinutes = allUsageEvents
         .reduce((sum, event) => sum + event.quantity, 0)
     }
 
     // Calculate limits based on tier
     const limits = getTierLimits(userData.subscriptionTier)
+
+    // Calculate remaining minutes, handling unlimited (-1) correctly
+    const voiceMinutesRemaining = limits.voiceMinutes === -1
+      ? -1  // Unlimited
+      : Math.max(0, limits.voiceMinutes - usageMinutes)
+
+    console.log(`[PAYMENTS] Subscription data for user ${userId}:`, {
+      tier: userData.subscriptionTier,
+      usageMinutes,
+      limit: limits.voiceMinutes,
+      remaining: voiceMinutesRemaining,
+    })
 
     return c.json({
       subscription: activeSubscription.length ? activeSubscription[0] : null,
@@ -225,7 +243,7 @@ paymentRoutes.get('/subscription', async (c) => {
       usage: {
         voiceMinutes: usageMinutes,
         voiceMinutesLimit: limits.voiceMinutes,
-        voiceMinutesRemaining: Math.max(0, limits.voiceMinutes - usageMinutes),
+        voiceMinutesRemaining,
       },
       limits,
     })

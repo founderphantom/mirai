@@ -191,24 +191,28 @@ export async function getCurrentUsage(
     .orderBy(desc(subscriptions.createdAt))
     .limit(1)
 
+  // Get all voice minutes usage events
+  const allVoiceUsage = await db
+    .select()
+    .from(usageEvents)
+    .where(
+      and(
+        eq(usageEvents.userId, userId),
+        eq(usageEvents.eventType, 'voice_minutes'),
+      ),
+    )
+
   let voiceMinutesUsed = 0
 
   if (activeSubscription.length) {
+    // Paid tier: Count usage since current billing period start
     const currentPeriodStart = activeSubscription[0].currentPeriodStart
-
-    // Get voice minutes usage
-    const voiceUsage = await db
-      .select()
-      .from(usageEvents)
-      .where(
-        and(
-          eq(usageEvents.userId, userId),
-          eq(usageEvents.eventType, 'voice_minutes'),
-        ),
-      )
-
-    voiceMinutesUsed = voiceUsage
+    voiceMinutesUsed = allVoiceUsage
       .filter((event) => event.createdAt >= currentPeriodStart)
+      .reduce((sum, event) => sum + event.quantity, 0)
+  } else {
+    // Free tier or no subscription: Count ALL usage (no billing period reset)
+    voiceMinutesUsed = allVoiceUsage
       .reduce((sum, event) => sum + event.quantity, 0)
   }
 

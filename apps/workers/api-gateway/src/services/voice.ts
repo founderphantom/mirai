@@ -265,9 +265,10 @@ export class VoiceSessionService {
       .where(eq(conversations.id, session.conversationId))
 
     // Track usage for billing
-    if (metrics?.audioSeconds) {
-      await this.trackUsage(userId, session.conversationId, metrics.audioSeconds)
-    }
+    // Always track usage, even if 0 seconds (for record-keeping and debugging)
+    const audioSeconds = metrics?.audioSeconds ?? 0
+    console.log(`[VOICE_SERVICE] Tracking usage for session ${sessionId}: ${audioSeconds} seconds`)
+    await this.trackUsage(userId, session.conversationId, audioSeconds)
 
     return { success: true }
   }
@@ -302,6 +303,14 @@ export class VoiceSessionService {
     const eventId = crypto.randomUUID()
     const minutes = Math.ceil(audioSeconds / 60)
 
+    console.log(`[VOICE_SERVICE] Creating usage event:`, {
+      userId,
+      conversationId,
+      audioSeconds,
+      minutes,
+      eventId,
+    })
+
     await this.db.insert(usageEvents).values({
       id: eventId,
       userId,
@@ -312,7 +321,8 @@ export class VoiceSessionService {
       polarSynced: false,
     })
 
+    console.log(`[VOICE_SERVICE] Successfully tracked ${minutes} voice minutes for user ${userId} (${audioSeconds}s audio)`)
+
     // TODO: Report to Polar API (async, non-blocking)
-    console.log(`[USAGE] Tracked ${minutes} voice minutes for user ${userId}`)
   }
 }

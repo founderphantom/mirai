@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted, computed, watch } from 'vue'
+import { ref, onUnmounted, onMounted, computed, watch } from 'vue'
 import { VoiceSessionManager } from '@/services/voice/VoiceSessionManager'
 import { VoiceStreamClient } from '@/services/voice/VoiceStreamClient'
 import type { Character } from '@/services/api/characters'
@@ -22,6 +22,7 @@ const isConnecting = ref(false)
 const isMuted = ref(false)
 const sessionKey = ref<string | null>(null)
 const conversationId = ref<string | null>(null)
+const isEndingSession = ref(false) // Prevent duplicate endSession calls
 
 // Error handling with composable
 const { handleWebSocketError, handleApiError, errorMessage, clearError } = useErrorHandler()
@@ -98,29 +99,41 @@ async function startSession() {
 
 /**
  * End voice session
+ * Tracks usage and cleans up resources
  */
 async function endSession() {
-  if (!voiceClient.value || !sessionKey.value)
+  // Prevent duplicate calls
+  if (!voiceClient.value || !sessionKey.value || isEndingSession.value) {
     return
+  }
+
+  isEndingSession.value = true
 
   try {
     // Get metrics before cleanup
     const metrics = voiceClient.value.getMetrics()
 
-    // Disconnect
+    console.log('[VoiceChat] Ending session with metrics:', metrics)
+
+    // Disconnect WebSocket
     voiceClient.value.disconnect()
     voiceClient.value = null
 
-    // End session via API
+    // End session via API (tracks usage)
     await sessionManager.endSession(sessionKey.value, metrics)
+
+    console.log('[VoiceChat] Session ended successfully, usage tracked')
 
     // Close component
     emit('close')
   }
   catch (err) {
+    console.error('[VoiceChat] Error ending session:', err)
     handleApiError(err, 'end session')
     // Still close the component even if API call fails
     emit('close')
+  } finally {
+    isEndingSession.value = false
   }
 }
 
@@ -184,19 +197,67 @@ function stopAudioMonitoring() {
 
 /**
  * Cleanup on unmount
+ * This now calls endSession to ensure usage is tracked
  */
-function cleanup() {
+async function cleanup() {
   stopAudioMonitoring()
-  if (voiceClient.value) {
-    voiceClient.value.disconnect()
-    voiceClient.value = null
+
+  // End the session properly to track usage
+  if (voiceClient.value && sessionKey.value && !isEndingSession.value) {
+    await endSession()
+  } else {
+    // If endSession was already called, just clean up resources
+    if (voiceClient.value) {
+      voiceClient.value.disconnect()
+      voiceClient.value = null
+    }
+    isConnected.value = false
+    sessionKey.value = null
+    conversationId.value = null
   }
-  isConnected.value = false
-  sessionKey.value = null
-  conversationId.value = null
 }
 
+/**
+ * Handle browser close/refresh
+ * Uses fetch with keepalive flag for reliable tracking when page unloads
+ * This approach supports authentication (cookies) better than sendBeacon
+ */
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  // Track usage if session is active
+  if (sessionKey.value && voiceClient.value && !isEndingSession.value) {
+    const metrics = voiceClient.value.getMetrics()
+
+    console.log('[VoiceChat] Browser closing, tracking usage with keepalive fetch:', metrics)
+
+    // Use fetch with keepalive flag - supports credentials and completes after page unload
+    const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
+
+    // Synchronous request that will complete even if page closes
+    fetch(`${API_BASE_URL}/api/voice/session/${sessionKey.value}/end`, {
+      method: 'POST',
+      keepalive: true,  // Critical: Allows request to complete after page unload
+      credentials: 'include',  // Include authentication cookies
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(metrics),
+    }).catch((err) => {
+      // Log error but don't block page unload
+      console.error('[VoiceChat] Failed to track usage on unload:', err)
+    })
+  }
+}
+
+onMounted(() => {
+  // Add beforeunload handler to track usage when browser closes
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
 onUnmounted(() => {
+  // Remove beforeunload handler
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+
+  // Clean up session
   cleanup()
 })
 

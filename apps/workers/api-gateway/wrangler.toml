@@ -48,8 +48,16 @@ ENVIRONMENT = "production"
 LOG_LEVEL = "debug"
 # BETTER_AUTH_URL should match your API domain for OAuth callbacks
 # Using api.miraichat.app since we're bypassing the stage-web proxy
-BETTER_AUTH_URL = "https://api.miraichat.app"
+BETTER_AUTH_URL = "https://miraichat.app"
 FRONTEND_URL = "https://miraichat.app"
+
+# Polar Configuration
+# Organization ID and Product IDs from Polar dashboard
+POLAR_ORGANIZATION_ID = "60a4b19f-1344-4c5f-b60c-1590bbe321fb"
+POLAR_PRO_MONTHLY_ID = "c540d579-d932-459f-bc8c-c6f73c7091b3"
+POLAR_PRO_YEARLY_ID = "15a6e08c-84d7-4076-a622-6f8e100bfa07"
+POLAR_MAX_MONTHLY_ID = "005f746f-e207-4a00-b25c-a3d1c8f97084"
+POLAR_MAX_YEARLY_ID = "bdd7e461-7fcd-431e-a266-6891e1758781"
 
 # D1 Database Binding
 [[env.dev.d1_databases]]
