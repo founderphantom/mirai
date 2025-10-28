@@ -116,7 +116,7 @@ export class InworldGraphWrapper {
     const graphBuilder = new GraphBuilder({
       id: graphName,
       apiKey,
-      enableRemoteConfig: true,
+      enableRemoteConfig: false, // Disable to avoid API call timeouts during initialization
     });
 
     graphBuilder

@@ -3,7 +3,7 @@ import { v4 } from 'uuid';
 const { validationResult } = require('express-validator');
 
 import { parseEnvironmentVariables } from '../helpers';
-import { Connection } from '../types';
+import { Connection, Agent, PersonalityConfig } from '../types';
 import { InworldGraphWrapper } from './graph';
 
 export class InworldApp {
@@ -35,6 +35,7 @@ export class InworldApp {
       ttsModelId?: string;
     },
   ) {
+    console.log('[InworldApp] 🚀 Starting initialization...');
     this.connections = {};
 
     // Parse the environment variables
@@ -49,6 +50,14 @@ export class InworldApp {
     this.graphVisualizationEnabled = env.graphVisualizationEnabled;
     this.interruptionEnabled = env.interruptionEnabled;
     this.ttsModelId = voiceConfig?.ttsModelId || env.ttsModelId;
+
+    console.log('[InworldApp] 🔧 Configuration:', {
+      hasApiKey: !!this.apiKey,
+      llmModelName: this.llmModelName,
+      llmProvider: this.llmProvider,
+      voiceId: this.voiceId,
+      ttsModelId: this.ttsModelId,
+    });
 
     // Validate we have an API key from either source
     if (!this.apiKey) {
@@ -117,7 +126,15 @@ export class InworldApp {
     res.end(JSON.stringify({ agent }));
   }
 
-  private createSystemMessage(agent: any) {
+  private createSystemMessage(agent: Agent | PersonalityConfig): string {
+    // Check if this is the new PersonalityConfig format (has dialogueStyle)
+    if ('dialogueStyle' in agent) {
+      // Use the rich dialogueStyle as the complete system message
+      // This contains the full personality prompt with emotes, delays, etc.
+      return agent.dialogueStyle;
+    }
+
+    // Fallback to legacy Agent format for backward compatibility
     return `You are: "${agent.name}". Your persona is: "${agent.description}". Your motivation is: "${agent.motivation}".`;
   }
 
@@ -136,8 +153,33 @@ export class InworldApp {
   }
 
   shutdown() {
-    this.connections = {};
-    this.graphWithTextInput.destroy();
-    this.graphWithAudioInput.destroy();
+    console.log('[InworldApp] 🛑 Shutting down Inworld app...');
+
+    try {
+      // Clean up connections
+      this.connections = {};
+
+      // Properly destroy graph wrappers to close gRPC connections
+      if (this.graphWithTextInput) {
+        console.log('[InworldApp] 🗑️  Destroying text input graph...');
+        this.graphWithTextInput.destroy();
+      }
+
+      if (this.graphWithAudioInput) {
+        console.log('[InworldApp] 🗑️  Destroying audio input graph...');
+        this.graphWithAudioInput.destroy();
+      }
+
+      // Destroy VAD client
+      if (this.vadClient) {
+        console.log('[InworldApp] 🗑️  Destroying VAD client...');
+        this.vadClient.destroy();
+      }
+
+      console.log('[InworldApp] ✅ Shutdown complete');
+    } catch (error) {
+      console.error('[InworldApp] ❌ Error during shutdown:', error);
+      throw error;
+    }
   }
 }

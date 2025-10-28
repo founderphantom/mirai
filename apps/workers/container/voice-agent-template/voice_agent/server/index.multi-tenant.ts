@@ -181,13 +181,13 @@ webSocket.on('connection', (ws, request) => {
   })
 
   ws.on('close', () => {
-    // Remove session from character pool
-    characterPool.removeSession(characterId, sessionKey)
+    console.log(`[WebSocket] 🔌 Connection closed for session ${sessionKey}`)
 
-    // Clean up connection
+    // Clean up connection first
     if (inworldApp.connections[key]) {
       delete inworldApp.connections[key]
     }
+    characterPool.removeSession(characterId, sessionKey)
   })
 })
 

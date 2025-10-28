@@ -52,8 +52,8 @@ export class CharacterPoolManager {
 
   // Configuration
   private readonly MAX_SESSIONS_PER_CONTAINER = 100
-  private readonly CHARACTER_IDLE_TIMEOUT = 10 * 60 * 1000 // 10 minutes
-  private readonly CLEANUP_INTERVAL = 60 * 1000 // 1 minute
+  private readonly CHARACTER_IDLE_TIMEOUT = 2 * 60 * 1000 // 2 minutes (reduced from 10 to prevent gRPC connection buildup)
+  private readonly CLEANUP_INTERVAL = 30 * 1000 // 30 seconds (more frequent cleanup)
 
   private constructor() {
     this.startCleanupTimer()
