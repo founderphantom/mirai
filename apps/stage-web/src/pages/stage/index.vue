@@ -139,6 +139,7 @@ onMounted(async () => {
             :x-offset="`${isMobile ? position.x : position.x - 10}%`"
             :y-offset="positionInPercentageString.y"
             :scale="scale"
+            :model-config="character?.live2dModelConfig"
           />
           <div v-if="showVoiceChat && character" h="85dvh" absolute right-4 flex flex-1 flex-col max-w="500px" min-w="30%">
             <VoiceChat

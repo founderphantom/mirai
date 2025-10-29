@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Cubism4InternalModel, InternalModel } from 'pixi-live2d-display/cubism4'
+import type { Live2DModelConfig } from '@proj-airi/database-schema'
 
 import { breakpointsTailwind, until, useBreakpoints, useDark, useDebounceFn } from '@vueuse/core'
 import { formatHex } from 'culori'
@@ -24,6 +25,7 @@ type PixiLive2DInternalModel = InternalModel & {
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
+  modelConfig?: Live2DModelConfig
 
   app?: Application
   mouthOpenSize?: number
@@ -107,9 +109,15 @@ function setScaleAndPosition() {
   if (!model.value)
     return
 
-  let offsetFactor = 2.2
+  // Get model-specific configuration for auto-scaling
+  const baseScale = props.modelConfig?.baseScale ?? 1.0
+  const modelOffsetX = props.modelConfig?.offsetX ?? 0
+  const modelOffsetY = props.modelConfig?.offsetY ?? 0
+
+  // Apply baseScale multiplier to offset factor for consistent sizing across different models
+  let offsetFactor = 2.2 * baseScale
   if (isMobile.value) {
-    offsetFactor = 2.2
+    offsetFactor = 2.2 * baseScale
   }
 
   const heightScale = (props.height * 0.95 / initialModelHeight.value * offsetFactor)
@@ -118,8 +126,12 @@ function setScaleAndPosition() {
 
   model.value.scale.set(scale * props.scale, scale * props.scale)
 
-  model.value.x = (props.width / 2) + offset.value.xOffset
-  model.value.y = props.height + offset.value.yOffset
+  // Apply model-specific offsets (percentage-based) in addition to user offsets
+  const modelSpecificOffsetX = (modelOffsetX / 100) * props.width
+  const modelSpecificOffsetY = (modelOffsetY / 100) * props.height
+
+  model.value.x = (props.width / 2) + offset.value.xOffset + modelSpecificOffsetX
+  model.value.y = props.height + offset.value.yOffset + modelSpecificOffsetY
 }
 
 const {

@@ -25,6 +25,10 @@ export const characters = sqliteTable('characters', {
   // Schema: { motivations, flaws, dialogue_style, adjectives, voice_config }
   personalityConfig: text('personality_config', { mode: 'json' }).notNull(),
 
+  // Live2D model configuration for auto-scaling and positioning
+  // Schema: { baseScale, offsetX, offsetY }
+  live2dModelConfig: text('live2d_model_config', { mode: 'json' }),
+
   // Metadata
   isPreset: integer('is_preset', { mode: 'boolean' }).default(false), // System preset characters
   isPublic: integer('is_public', { mode: 'boolean' }).default(false), // For marketplace
@@ -115,4 +119,14 @@ export interface PersonalityConfig {
     speed?: number
     emotionRange?: 'low' | 'medium' | 'high'
   }
+}
+
+/**
+ * Live2D Model Configuration Interface
+ * Used for auto-scaling and positioning models to ensure consistent visual size
+ */
+export interface Live2DModelConfig {
+  baseScale?: number // Model-specific scale multiplier (default: 1.0)
+  offsetX?: number // Horizontal offset in percentage (default: 0)
+  offsetY?: number // Vertical offset in percentage (default: 0)
 }

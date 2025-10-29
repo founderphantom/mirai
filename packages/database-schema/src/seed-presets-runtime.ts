@@ -34,7 +34,7 @@
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { characters } from './schema/characters'
-import type { PersonalityConfig } from './schema/characters'
+import type { PersonalityConfig, Live2DModelConfig } from './schema/characters'
 
 /**
  * Preset character definitions for Inworld Runtime
@@ -50,6 +50,13 @@ const PRESET_CHARACTERS = [
     // This is just a reference ID - not actually used by Runtime
     // Runtime creates characters on-the-fly from personality config
     inworldCharacterId: 'runtime-character-hiyori',
+
+    // Live2D model configuration for consistent auto-scaling
+    live2dModelConfig: {
+      baseScale: 1.0, // Baseline scale - this model is the reference
+      offsetX: 0,
+      offsetY: 0,
+    } as Live2DModelConfig,
 
     personalityConfig: {
       motivations: [
@@ -84,6 +91,13 @@ const PRESET_CHARACTERS = [
     // Runtime creates characters on-the-fly from personality config
     inworldCharacterId: 'runtime-character-blackwolf',
 
+    // Live2D model configuration for consistent auto-scaling
+    live2dModelConfig: {
+      baseScale: 2, // Increased to compensate for larger native model dimensions
+      offsetX: 0,
+      offsetY: 5, // Slight downwards adjustment to center better
+    } as Live2DModelConfig,
+
     personalityConfig: {
       motivations: [
         'Protect those she cares about with fierce loyalty',
@@ -115,6 +129,13 @@ const PRESET_CHARACTERS = [
     avatarThumbnail: '/assets/live2d/models/crimsonkitsune/preview.png',
 
     inworldCharacterId: 'runtime-character-crimsonkitsune',
+
+    // Live2D model configuration for consistent auto-scaling
+    live2dModelConfig: {
+      baseScale: 1.0, // Start with baseline - adjust if needed during testing
+      offsetX: 0,
+      offsetY: 0,
+    } as Live2DModelConfig,
 
     personalityConfig: {
       motivations: [
@@ -177,6 +198,7 @@ export async function seedPresetsRuntime(db: D1Database) {
         live2dModelKey: preset.live2dModelKey,
         avatarThumbnail: preset.avatarThumbnail,
         personalityConfig: preset.personalityConfig as any,
+        live2dModelConfig: preset.live2dModelConfig as any,
         isPreset: true,
         isPublic: false,
         totalConversations: 0,
