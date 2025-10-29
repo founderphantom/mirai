@@ -129,9 +129,12 @@ export class InworldApp {
   private createSystemMessage(agent: Agent | PersonalityConfig): string {
     // Check if this is the new PersonalityConfig format (has dialogueStyle)
     if ('dialogueStyle' in agent) {
-      // Use the rich dialogueStyle as the complete system message
-      // This contains the full personality prompt with emotes, delays, etc.
-      return agent.dialogueStyle;
+      // Build structured personality prompt from all fields
+      const motivations = agent.motivations?.join(', ') || 'Help and engage with users';
+      const flaws = agent.flaws?.join(', ') || 'None specified';
+      const adjectives = agent.adjectives?.join(', ') || 'Friendly';
+
+      return `Your persona is: "${agent.dialogueStyle}". Your motivations are: ${motivations}. Your flaws are: ${flaws}. Your personality traits: ${adjectives}.`;
     }
 
     // Fallback to legacy Agent format for backward compatibility

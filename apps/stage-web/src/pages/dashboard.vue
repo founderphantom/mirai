@@ -151,7 +151,6 @@ function selectCharacter(character: Character) {
                 </div>
                 <div class="character-info">
                   <h3>{{ character.displayName }}</h3>
-                  <p class="dialogue-style">{{ character.personalityConfig.dialogueStyle }}</p>
                   <div class="traits">
                     <span
                       v-for="adjective in character.personalityConfig.adjectives"
@@ -416,12 +415,6 @@ function selectCharacter(character: Character) {
   font-size: 1.75rem;
   font-weight: 700;
   color: #1a202c;
-  margin-bottom: 0.5rem;
-}
-
-.dialogue-style {
-  color: #6b7280;
-  font-size: 1rem;
   margin-bottom: 1rem;
 }
 

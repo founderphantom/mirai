@@ -365,16 +365,28 @@ async function handleSubscriptionActive(db: any, data: any, env: HonoEnv['Bindin
 async function handleSubscriptionUpdated(db: any, data: any) {
   const {
     id,
+    productId,
+    price,
     status,
     currentPeriodStart,
     currentPeriodEnd,
     cancelAtPeriodEnd,
   } = data
 
+  // Extract priceId from nested price object or use productId as fallback
+  const priceId = price?.id || productId
+
+  // Determine tier from productId
+  const tier = getTierFromProductId(productId)
+
+  console.log(`[WEBHOOK] Subscription updated - productId: ${productId}, priceId: ${priceId}, tier: ${tier}, status: ${status}`)
+
   // Note: Polar sends timestamps in seconds, Drizzle expects Date objects (converted to milliseconds)
   await db
     .update(subscriptions)
     .set({
+      productId,
+      priceId,
       status,
       currentPeriodStart: new Date(currentPeriodStart * 1000),
       currentPeriodEnd: new Date(currentPeriodEnd * 1000),
@@ -383,7 +395,7 @@ async function handleSubscriptionUpdated(db: any, data: any) {
     })
     .where(eq(subscriptions.id, id))
 
-  // Update user status
+  // Update user tier and status
   const subscription = await db
     .select()
     .from(subscriptions)
@@ -394,9 +406,13 @@ async function handleSubscriptionUpdated(db: any, data: any) {
     await db
       .update(user)
       .set({
+        subscriptionTier: tier,
         subscriptionStatus: status,
+        updatedAt: new Date(),
       })
       .where(eq(user.id, subscription[0].userId))
+
+    console.log(`[WEBHOOK] User ${subscription[0].userId} subscription updated to tier: ${tier}, status: ${status}`)
   }
 
   console.log(`[WEBHOOK] Subscription updated: ${id} - ${status}`)
