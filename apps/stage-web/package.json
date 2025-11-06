@@ -11,10 +11,10 @@
   "scripts": {
     "build:dev": "NODE_ENV='development' NODE_OPTIONS='--max-old-space-size=8192' vite build",
     "build": "NODE_ENV='production' NODE_OPTIONS='--max-old-space-size=8192' vite build",
-    "dev": "rm -f dist/assets/cjkFonts_allseto_v1.11-*.ttf dist/assets/XiaolaiSC-Regular-*.ttf dist/assets/duckdb-coi-CSr8FQO4*.wasm dist/assets/duckdb-eh-BJOC5S4x*.wasm dist/assets/duckdb-mvp-8HYqhb4i*.wasm dist/assets/live2d/models/hiyori_pro_zh.zip dist/assets/vrm/models/AvatarSample-A/AvatarSample_A.vrm dist/assets/vrm/models/AvatarSample-B/AvatarSample_B.vrm && wrangler dev --env dev --port 8787",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
+    "deploy:local": "rm -f dist/assets/cjkFonts_allseto_v1.11-*.ttf dist/assets/XiaolaiSC-Regular-*.ttf dist/assets/duckdb-coi-CSr8FQO4*.wasm dist/assets/duckdb-eh-BJOC5S4x*.wasm dist/assets/duckdb-mvp-8HYqhb4i*.wasm dist/assets/live2d/models/hiyori_pro_zh.zip dist/assets/vrm/models/AvatarSample-A/AvatarSample_A.vrm dist/assets/vrm/models/AvatarSample-B/AvatarSample_B.vrm && wrangler dev --env dev --port 8787",
     "deploy:cf": "rm -f dist/assets/cjkFonts_allseto_v1.11-*.ttf dist/assets/XiaolaiSC-Regular-*.ttf dist/assets/duckdb-coi-CSr8FQO4*.wasm dist/assets/duckdb-eh-BJOC5S4x*.wasm dist/assets/duckdb-mvp-8HYqhb4i*.wasm dist/assets/live2d/models/hiyori_pro_zh.zip dist/assets/vrm/models/AvatarSample-A/AvatarSample_A.vrm dist/assets/vrm/models/AvatarSample-B/AvatarSample_B.vrm && wrangler deploy"
   },
   "dependencies": {

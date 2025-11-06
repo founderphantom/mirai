@@ -15,6 +15,13 @@
       "when": 1760593884943,
       "tag": "0001_redundant_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1761701366188,
+      "tag": "0002_great_betty_ross",
+      "breakpoints": true
     }
   ]
 }

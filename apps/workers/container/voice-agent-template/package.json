@@ -5,10 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --env dev --port 4000 --name voice-agent-container",
+    "deploy:local": "wrangler dev --env dev --port 4000 --name voice-agent-container",
     "deploy:cf": "wrangler deploy",
-    "deploy:staging": "wrangler deploy --env staging",
-    "deploy:production": "wrangler deploy --env production",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test:docker": "docker build --target development -t voice-agent-dev . && docker run -p 4000:4000 --env-file .env --rm voice-agent-dev",
