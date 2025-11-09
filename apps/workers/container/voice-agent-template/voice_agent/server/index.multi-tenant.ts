@@ -303,6 +303,108 @@ app.post('/unload', async (req, res) => {
   }
 })
 
+// Text input endpoint - Accepts pre-transcribed text from Workers AI
+app.post('/text', async (req, res) => {
+  try {
+    const { text } = req.body as { text: string }
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid text' })
+    }
+
+    // Extract session data from headers
+    const sessionKey = req.headers['x-session-key'] as string
+    const characterId = req.headers['x-character-id'] as string
+    const userId = req.headers['x-user-id'] as string
+
+    if (!sessionKey || !characterId || !userId) {
+      return res.status(400).json({ error: 'Missing required headers' })
+    }
+
+    // Get character instance
+    const inworldApp = characterPool.getCharacter(characterId)
+
+    if (!inworldApp) {
+      return res.status(404).json({
+        error: 'Character not found',
+        message: 'Character not loaded. Call /load first.'
+      })
+    }
+
+    // Check if session exists
+    if (!inworldApp.connections[sessionKey]) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'Session not initialized. Call /load first.'
+      })
+    }
+
+    console.log(`[Text Input] Processing text for session ${sessionKey}:`, text.substring(0, 100))
+
+    // Get the connection for this session
+    const connection = inworldApp.connections[sessionKey]
+
+    // Create a text input for the graph
+    const { v4: uuidv4 } = require('uuid')
+    const interactionId = uuidv4()
+
+    const textInput = {
+      text,
+      interactionId,
+      key: sessionKey,
+    }
+
+    try {
+      // Send NEW_INTERACTION event to client
+      if (connection.ws) {
+        connection.ws.send(
+          JSON.stringify({
+            type: 'NEW_INTERACTION',
+            interactionId,
+            timestamp: Date.now(),
+          })
+        )
+      }
+
+      // Execute the text input graph
+      const { outputStream } = inworldApp.graphWithTextInput.graph.start(textInput)
+
+      // Process the output stream
+      for await (const output of outputStream) {
+        // Send output to client via WebSocket if connected
+        if (connection.ws && connection.ws.readyState === 1) {
+          // WebSocket.OPEN = 1
+          // Handle different output types (text, audio, etc.)
+          if (output) {
+            connection.ws.send(JSON.stringify(output))
+          }
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        sessionKey,
+        textLength: text.length,
+        interactionId,
+        message: 'Text sent to agent successfully',
+      })
+    } catch (error) {
+      console.error('[Text Input] Failed to send text to Inworld:', error)
+
+      res.status(500).json({
+        error: 'Failed to process text',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  } catch (error) {
+    console.error('[Text Input] Error:', error)
+    res.status(500).json({
+      error: 'Failed to process text input',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
 // WebSocket upgrade handler
 server.on('upgrade', async (request, socket, head) => {
   const { pathname } = parse(request.url!)
