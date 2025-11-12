@@ -18,7 +18,6 @@ import { authMiddleware, errorHandler, logger } from './lib/middleware'
 // Import routes
 import characterRoutes from './routes/characters'
 import voiceRoutes from './routes/voice'
-import audioStreamRoutes from './routes/audio-stream'
 import assetRoutes from './routes/assets'
 import webhookRoutes from './routes/webhooks'
 import adminRoutes from './routes/admin'
@@ -71,7 +70,6 @@ app.use('/api/*', async (c, next) => {
   // - /api/auth/* - Better-Auth handles its own auth
   // - /api/webhooks/* - Uses signature verification
   // - /api/voice/ws - Uses sessionKey from KV cache
-  // - /api/audio/stream - Uses sessionKey from KV cache (new Workers AI audio streaming)
   // - /api/assets/public/* - Public assets (preset character thumbnails, etc.)
   // - /api/characters/presets - Public preset characters list
   // - /admin/* - Uses admin secret verification (handled in admin routes)
@@ -79,7 +77,6 @@ app.use('/api/*', async (c, next) => {
     path.startsWith('/api/auth/') ||
     path.startsWith('/api/webhooks/') ||
     path === '/api/voice/ws' ||
-    path === '/api/audio/stream' ||
     path.startsWith('/api/assets/public/') ||
     path === '/api/characters/presets' ||
     path.startsWith('/admin/')
@@ -94,7 +91,6 @@ app.use('/api/*', async (c, next) => {
 // Protected API routes - require authentication
 app.route('/api/characters', characterRoutes)
 app.route('/api/voice', voiceRoutes)
-app.route('/api/audio', audioStreamRoutes)
 app.route('/api/assets', assetRoutes)
 app.route('/api/payments', paymentRoutes)
 

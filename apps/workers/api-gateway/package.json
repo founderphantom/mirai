@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 4337 --env dev --name mirai-api-gateway",
-    "deploy": "wrangler deploy",
+    "deploy:cf": "wrangler deploy",
     "tail": "wrangler tail",
     "typecheck": "tsc --noEmit"
   },

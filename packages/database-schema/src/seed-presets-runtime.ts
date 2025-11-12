@@ -95,7 +95,7 @@ const PRESET_CHARACTERS = [
     live2dModelConfig: {
       baseScale: 2, // Increased to compensate for larger native model dimensions
       offsetX: 0,
-      offsetY: 5, // Slight downwards adjustment to center better
+      offsetY: 40, // Slight downwards adjustment to center better
     } as Live2DModelConfig,
 
     personalityConfig: {

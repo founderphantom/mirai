@@ -16,9 +16,6 @@ export interface Env {
   // Durable Objects
   VOICE_SESSION: DurableObjectNamespace
 
-  // Workers AI
-  AI: Ai  // Workers AI binding for VAD and STT
-
   // Service Bindings (Worker-to-Worker)
   VOICE_AGENT: Fetcher  // Service binding to voice-agent-container Worker
 
