@@ -162,6 +162,7 @@ export class VoiceSessionService {
       userId,
       characterId,
       inworldCharacterId: character[0].inworldCharacterId,
+      inworldApiKey: this.env.INWORLD_API_KEY,
       agentConfig: character[0].personalityConfig,
       createdAt: Date.now(),
       expiresAt: Date.now() + 300000, // 5 minutes

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onUnmounted, onMounted, computed, watch } from 'vue'
 import { VoiceSessionManager, type QuotaError } from '@/services/voice/VoiceSessionManager'
-import { VoiceStreamClient } from '@/services/voice/VoiceStreamClient'
+import { WorkersAIStreamClient } from '@/services/voice/WorkersAIStreamClient'
 import type { Character } from '@/services/api/characters'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import UpgradePrompt from './UpgradePrompt.vue'
@@ -17,7 +17,7 @@ const emit = defineEmits<{
 
 // State
 const sessionManager = new VoiceSessionManager()
-const voiceClient = ref<VoiceStreamClient | null>(null)
+const voiceClient = ref<WorkersAIStreamClient | null>(null)
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const isMuted = ref(false)
@@ -65,8 +65,8 @@ async function startSession() {
     sessionKey.value = session.sessionKey
     conversationId.value = session.conversationId
 
-    // 2. Connect to WebSocket
-    voiceClient.value = new VoiceStreamClient({
+    // 2. Connect to WebSocket using Workers AI endpoint
+    voiceClient.value = new WorkersAIStreamClient({
       onTranscript: (text: string, speaker: string) => {
         messages.value.push({
           speaker,
@@ -92,7 +92,17 @@ async function startSession() {
       }
     })
 
-    await voiceClient.value.connect(session.websocketUrl)
+    // Get both WebSocket URLs (dual connection architecture)
+    const audioStreamUrl = sessionManager.getWorkersAIWebSocketUrl(session.sessionKey)
+    const agentUrl = sessionManager.getWebSocketUrl(session.sessionKey)
+
+    console.log('[VoiceChat] Connecting to Workers AI endpoints:', {
+      audioStream: audioStreamUrl,
+      agent: agentUrl,
+    })
+
+    // Connect to both WebSockets simultaneously
+    await voiceClient.value.connect(audioStreamUrl, agentUrl)
 
     // 3. Start audio capture immediately (WebSocket onOpen confirms readiness)
     console.log('[VoiceChat] Starting audio capture...')

@@ -11,6 +11,15 @@ assets = { directory = "./dist", binding = "ASSETS" }
 binding = "PUBLIC_ASSETS"
 bucket_name = "mirai-assets"
 
+# Workers AI Binding - For VAD and STT
+[ai]
+binding = "AI"
+
+# KV Cache for session management
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
+
 # Service Binding - API Gateway Worker
 [[services]]
 binding = "API_GATEWAY"
@@ -37,6 +46,15 @@ LOG_LEVEL = "info"
 [[env.dev.r2_buckets]]
 binding = "PUBLIC_ASSETS"
 bucket_name = "mirai-assets"
+
+# Workers AI Binding - For VAD and STT
+[env.dev.ai]
+binding = "AI"
+
+# KV Cache for session management
+[[env.dev.kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
 
 # Service Binding - API Gateway Worker
 [[env.dev.services]]

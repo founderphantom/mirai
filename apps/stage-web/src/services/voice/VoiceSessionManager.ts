@@ -109,7 +109,7 @@ export class VoiceSessionManager {
   }
 
   /**
-   * Get WebSocket URL for voice streaming
+   * Get WebSocket URL for voice streaming (OLD - connects to voice agent container)
    * Constructs proper WebSocket URL based on current page protocol
    */
   getWebSocketUrl(sessionKey: string): string {
@@ -124,5 +124,23 @@ export class VoiceSessionManager {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     return `${protocol}//${host}/api/voice/ws?sessionKey=${sessionKey}`
+  }
+
+  /**
+   * Get WebSocket URL for Workers AI audio streaming (NEW - edge-based VAD/STT)
+   * Returns /audio-stream endpoint for real-time subtitles and transcription
+   */
+  getWorkersAIWebSocketUrl(sessionKey: string): string {
+    // In development, use environment variable to avoid protocol issues
+    const wsBaseUrl = import.meta.env.VITE_WS_URL
+
+    if (wsBaseUrl) {
+      return `${wsBaseUrl}/audio-stream?sessionKey=${sessionKey}`
+    }
+
+    // Production: Auto-detect from page protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return `${protocol}//${host}/audio-stream?sessionKey=${sessionKey}`
   }
 }

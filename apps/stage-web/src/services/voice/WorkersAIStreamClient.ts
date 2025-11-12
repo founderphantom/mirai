@@ -22,6 +22,12 @@ export interface VADMessage {
   timestamp: number
 }
 
+export interface TranscriptionCompleteMessage {
+  type: 'transcription_complete'
+  text: string
+  timestamp: number
+}
+
 export interface AgentResponseMessage {
   type: 'agent_response'
   data: any
@@ -52,23 +58,33 @@ export interface ErrorMessage {
 export type WorkersAIMessage =
   | SubtitleMessage
   | VADMessage
+  | TranscriptionCompleteMessage
   | AgentResponseMessage
   | StatusMessage
   | PongMessage
   | ErrorMessage
 
 export interface WorkersAIStreamCallbacks {
-  onSubtitle?: (text: string, isPartial: boolean) => void
-  onVADUpdate?: (isComplete: boolean, probability: number) => void
-  onAgentResponse?: (data: any) => void
+  // VoiceStreamClient compatible callbacks (for drop-in replacement)
+  onTranscript?: (text: string, speaker: string) => void
+  onEmotion?: (emotion: string, intensity: number) => void
   onAudio?: (audioData: ArrayBuffer) => void
   onError?: (error: string) => void
   onOpen?: () => void
   onClose?: () => void
+
+  // Workers AI specific callbacks (optional, for advanced usage)
+  onSubtitle?: (text: string, isPartial: boolean) => void
+  onVADUpdate?: (isComplete: boolean, probability: number) => void
+  onTranscriptionComplete?: (text: string) => void
+  onAgentResponse?: (data: any) => void
 }
 
 export class WorkersAIStreamClient {
-  private ws: WebSocket | null = null
+  // Dual WebSocket architecture
+  private audioStreamWs: WebSocket | null = null // Workers AI WebSocket (/audio-stream)
+  private agentWs: WebSocket | null = null // Voice Agent WebSocket (/ws)
+
   private captureAudioContext: AudioContext | null = null // For microphone capture (16kHz)
   private playbackAudioContext: AudioContext | null = null // For TTS playback (24kHz)
   private mediaStream: MediaStream | null = null
@@ -99,32 +115,55 @@ export class WorkersAIStreamClient {
   constructor(private callbacks: WorkersAIStreamCallbacks) {}
 
   /**
-   * Connect to Workers AI audio stream WebSocket
+   * Connect to both WebSocket endpoints
+   * @param audioStreamUrl - Workers AI endpoint (/audio-stream) for VAD/STT
+   * @param agentUrl - Voice Agent endpoint (/ws) for character responses
    */
-  async connect(websocketUrl: string): Promise<void> {
+  async connect(audioStreamUrl: string, agentUrl: string): Promise<void> {
+    try {
+      // Connect to Workers AI WebSocket first (for audio input processing)
+      await this.connectAudioStream(audioStreamUrl)
+      console.log('[WorkersAI] Audio stream connected')
+
+      // Then connect to Voice Agent WebSocket (for character responses)
+      await this.connectAgent(agentUrl)
+      console.log('[WorkersAI] Agent connected')
+
+      this.startTime = Date.now()
+      this.callbacks.onOpen?.()
+    } catch (error) {
+      console.error('[WorkersAI] Connection error:', error)
+      this.disconnect()
+      throw error
+    }
+  }
+
+  /**
+   * Connect to Workers AI audio stream WebSocket (/audio-stream)
+   * Handles: VAD, STT, real-time subtitles
+   */
+  private async connectAudioStream(websocketUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        console.log('[WorkersAI] Connecting to:', websocketUrl)
-        this.ws = new WebSocket(websocketUrl)
-        this.ws.binaryType = 'arraybuffer'
+        console.log('[WorkersAI] Connecting to audio stream:', websocketUrl)
+        this.audioStreamWs = new WebSocket(websocketUrl)
+        this.audioStreamWs.binaryType = 'arraybuffer'
 
-        this.ws.onopen = () => {
-          console.log('[WorkersAI] WebSocket connected successfully')
-          this.startTime = Date.now()
+        this.audioStreamWs.onopen = () => {
+          console.log('[WorkersAI] Audio stream WebSocket connected')
           this.startPingInterval()
-          this.callbacks.onOpen?.()
           resolve()
         }
 
-        this.ws.onerror = (error) => {
-          console.error('[WorkersAI] WebSocket error:', error)
-          const errorMsg = 'Failed to connect to voice service'
+        this.audioStreamWs.onerror = (error) => {
+          console.error('[WorkersAI] Audio stream WebSocket error:', error)
+          const errorMsg = 'Failed to connect to audio stream'
           this.callbacks.onError?.(errorMsg)
           reject(new Error(errorMsg))
         }
 
-        this.ws.onclose = (event) => {
-          console.log('[WorkersAI] WebSocket closed:', {
+        this.audioStreamWs.onclose = (event) => {
+          console.log('[WorkersAI] Audio stream WebSocket closed:', {
             code: event.code,
             reason: event.reason,
             wasClean: event.wasClean,
@@ -134,11 +173,52 @@ export class WorkersAIStreamClient {
           this.cleanup()
         }
 
-        this.ws.onmessage = async (event) => {
-          await this.handleMessage(event.data)
+        this.audioStreamWs.onmessage = async (event) => {
+          await this.handleAudioStreamMessage(event.data)
         }
       } catch (error) {
-        console.error('[WorkersAI] Connection error:', error)
+        console.error('[WorkersAI] Audio stream connection error:', error)
+        reject(error)
+      }
+    })
+  }
+
+  /**
+   * Connect to Voice Agent WebSocket (/ws)
+   * Handles: Character responses (text, audio, emotions)
+   */
+  private async connectAgent(websocketUrl: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('[WorkersAI] Connecting to agent:', websocketUrl)
+        this.agentWs = new WebSocket(websocketUrl)
+        this.agentWs.binaryType = 'arraybuffer'
+
+        this.agentWs.onopen = () => {
+          console.log('[WorkersAI] Agent WebSocket connected')
+          resolve()
+        }
+
+        this.agentWs.onerror = (error) => {
+          console.error('[WorkersAI] Agent WebSocket error:', error)
+          const errorMsg = 'Failed to connect to voice agent'
+          this.callbacks.onError?.(errorMsg)
+          reject(new Error(errorMsg))
+        }
+
+        this.agentWs.onclose = (event) => {
+          console.log('[WorkersAI] Agent WebSocket closed:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+          })
+        }
+
+        this.agentWs.onmessage = async (event) => {
+          await this.handleAgentMessage(event.data)
+        }
+      } catch (error) {
+        console.error('[WorkersAI] Agent connection error:', error)
         reject(error)
       }
     })
@@ -164,10 +244,10 @@ export class WorkersAIStreamClient {
 
       console.log('[WorkersAI] Microphone access granted')
 
-      // Verify WebSocket is still open
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        console.error('[WorkersAI] WebSocket not open, state:', this.ws?.readyState)
-        throw new Error('WebSocket connection lost')
+      // Verify audio stream WebSocket is still open
+      if (!this.audioStreamWs || this.audioStreamWs.readyState !== WebSocket.OPEN) {
+        console.error('[WorkersAI] Audio stream WebSocket not open, state:', this.audioStreamWs?.readyState)
+        throw new Error('Audio stream connection lost')
       }
 
       // Create audio context for capture (16kHz for voice input)
@@ -181,8 +261,8 @@ export class WorkersAIStreamClient {
 
       // Process audio chunks
       this.scriptProcessor.onaudioprocess = (e) => {
-        // Block audio input if muted or WebSocket not ready
-        if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        // Block audio input if muted or audio stream WebSocket not ready
+        if (this.isMuted || !this.audioStreamWs || this.audioStreamWs.readyState !== WebSocket.OPEN) {
           return
         }
 
@@ -200,11 +280,11 @@ export class WorkersAIStreamClient {
       // Workers AI needs continuous audio stream for VAD to work properly
       let audioChunksSent = 0
       this.sendInterval = setInterval(() => {
-        if (this.audioBuffer.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
+        if (this.audioBuffer.length > 0 && this.audioStreamWs?.readyState === WebSocket.OPEN) {
           try {
-            // Send each buffered chunk
+            // Send each buffered chunk to audio stream WebSocket
             for (const chunk of this.audioBuffer) {
-              this.ws.send(chunk.buffer)
+              this.audioStreamWs.send(chunk.buffer)
               audioChunksSent++
             }
 
@@ -279,7 +359,7 @@ export class WorkersAIStreamClient {
   }
 
   /**
-   * Disconnect and cleanup
+   * Disconnect and cleanup both WebSockets
    */
   disconnect(): void {
     // Clear intervals
@@ -299,10 +379,16 @@ export class WorkersAIStreamClient {
     })
     this.currentSources = []
 
-    if (this.ws) {
-      this.ws.close()
-      this.ws = null
+    // Close both WebSocket connections
+    if (this.audioStreamWs) {
+      this.audioStreamWs.close()
+      this.audioStreamWs = null
     }
+    if (this.agentWs) {
+      this.agentWs.close()
+      this.agentWs = null
+    }
+
     this.stopAudioCapture()
 
     // Close playback audio context on full disconnect
@@ -333,13 +419,13 @@ export class WorkersAIStreamClient {
   }
 
   /**
-   * Start ping interval to keep connection alive
+   * Start ping interval to keep audio stream connection alive
    */
   private startPingInterval(): void {
     this.pingInterval = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
+      if (this.audioStreamWs?.readyState === WebSocket.OPEN) {
         try {
-          this.ws.send(JSON.stringify({ type: 'ping' }))
+          this.audioStreamWs.send(JSON.stringify({ type: 'ping' }))
         } catch (error) {
           console.error('[WorkersAI] Failed to send ping:', error)
         }
@@ -358,12 +444,13 @@ export class WorkersAIStreamClient {
   }
 
   /**
-   * Handle incoming WebSocket messages
+   * Handle incoming messages from audio stream WebSocket (/audio-stream)
+   * Handles: VAD status, STT transcriptions, real-time subtitles
    */
-  private async handleMessage(data: ArrayBuffer | string): Promise<void> {
-    // Binary data = audio from TTS
+  private async handleAudioStreamMessage(data: ArrayBuffer | string): Promise<void> {
+    // Should only receive JSON messages from audio stream
     if (data instanceof ArrayBuffer) {
-      await this.playAudio(data)
+      console.warn('[WorkersAI] Received unexpected binary data from audio stream')
       return
     }
 
@@ -371,7 +458,7 @@ export class WorkersAIStreamClient {
     try {
       const message: WorkersAIMessage = JSON.parse(data)
 
-      console.log('[WorkersAI] Received message:', message.type)
+      console.log('[WorkersAI] Audio stream message:', message.type)
 
       switch (message.type) {
         case 'subtitle':
@@ -384,6 +471,7 @@ export class WorkersAIStreamClient {
             console.log('[WorkersAI] Final transcription:', message.text)
           }
 
+          // Call both callbacks for compatibility
           this.callbacks.onSubtitle?.(message.text, message.is_partial)
           break
 
@@ -395,9 +483,15 @@ export class WorkersAIStreamClient {
           this.callbacks.onVADUpdate?.(message.is_complete, message.probability)
           break
 
-        case 'agent_response':
-          console.log('[WorkersAI] Agent response received')
-          this.callbacks.onAgentResponse?.(message.data)
+        case 'transcription_complete':
+          console.log('[WorkersAI] Transcription complete:', message.text)
+          // Clear current subtitle when final transcription is complete
+          this.currentSubtitle = ''
+          this.isPartialSubtitle = false
+
+          // Call both callbacks for compatibility
+          this.callbacks.onTranscriptionComplete?.(message.text)
+          this.callbacks.onTranscript?.(message.text, 'USER')
           break
 
         case 'pong':
@@ -409,15 +503,79 @@ export class WorkersAIStreamClient {
           break
 
         case 'error':
-          console.error('[WorkersAI] Error from backend:', message.message)
+          console.error('[WorkersAI] Error from audio stream:', message.message)
           this.callbacks.onError?.(message.message)
           break
 
         default:
-          console.warn('[WorkersAI] Unknown message type:', message)
+          console.warn('[WorkersAI] Unknown audio stream message type:', message)
       }
     } catch (error) {
-      console.error('[WorkersAI] Failed to parse message:', error, 'Raw data:', data)
+      console.error('[WorkersAI] Failed to parse audio stream message:', error, 'Raw data:', data)
+    }
+  }
+
+  /**
+   * Handle incoming messages from voice agent WebSocket (/ws)
+   * Handles: Character responses (text, emotions, TTS audio)
+   */
+  private async handleAgentMessage(data: ArrayBuffer | string): Promise<void> {
+    // Binary data = audio from TTS
+    if (data instanceof ArrayBuffer) {
+      console.log('[WorkersAI] Received audio from agent:', data.byteLength, 'bytes')
+      await this.playAudio(data)
+      return
+    }
+
+    // Text data = JSON message from Inworld Runtime
+    try {
+      const message = JSON.parse(data)
+
+      console.log('[WorkersAI] Agent message:', message.type || 'unknown')
+
+      // Handle different Inworld Runtime message types
+      switch (message.type) {
+        case 'TEXT':
+          // Character text response
+          if (message.text) {
+            console.log('[WorkersAI] Character text:', message.text)
+            this.callbacks.onTranscript?.(message.text, 'CHARACTER')
+          }
+          break
+
+        case 'AUDIO':
+          // This shouldn't happen - audio should be binary
+          console.warn('[WorkersAI] Received audio as JSON (unexpected)')
+          break
+
+        case 'EMOTION':
+          // Character emotion update
+          if (message.emotion) {
+            console.log('[WorkersAI] Character emotion:', message.emotion)
+            this.callbacks.onEmotion?.(message.emotion.behavior, message.emotion.strength || 1.0)
+          }
+          break
+
+        case 'INTERACTION_END':
+          console.log('[WorkersAI] Interaction ended')
+          break
+
+        case 'NEW_INTERACTION':
+          console.log('[WorkersAI] New interaction started:', message.interactionId)
+          break
+
+        case 'ERROR':
+          console.error('[WorkersAI] Agent error:', message.error)
+          this.callbacks.onError?.(message.error || 'Agent error')
+          break
+
+        default:
+          // Log other message types for debugging
+          console.log('[WorkersAI] Other agent message:', message.type)
+          this.callbacks.onAgentResponse?.(message)
+      }
+    } catch (error) {
+      console.error('[WorkersAI] Failed to parse agent message:', error, 'Raw data:', data)
     }
   }
 
@@ -544,6 +702,7 @@ export class WorkersAIStreamClient {
    */
   private cleanup(): void {
     this.stopAudioCapture()
-    this.ws = null
+    this.audioStreamWs = null
+    this.agentWs = null
   }
 }
