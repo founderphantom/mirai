@@ -46,15 +46,18 @@ LOG_LEVEL = "info"
 [[env.dev.r2_buckets]]
 binding = "PUBLIC_ASSETS"
 bucket_name = "mirai-assets"
+remote = true
 
 # Workers AI Binding - For VAD and STT
 [env.dev.ai]
 binding = "AI"
+remote = true
 
 # KV Cache for session management
 [[env.dev.kv_namespaces]]
 binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
+remote = true
 
 # Service Binding - API Gateway Worker
 [[env.dev.services]]
@@ -71,8 +74,8 @@ environment = "dev"
 [env.dev.vars]
 VITE_ENVIRONMENT = "development"
 VITE_API_URL = "http://localhost:4337"
-VITE_WS_URL = "ws://localhost:4337"
-VITE_AIRI_WS_URL = ""
+VITE_WS_URL = "ws://localhost:8787"
+VITE_AUDIO_STREAM_WS_URL = "ws://localhost:8787"
 LOG_LEVEL = "debug"
 
 [observability]

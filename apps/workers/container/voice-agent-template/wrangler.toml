@@ -57,6 +57,7 @@ class_name = "VoiceAgentContainer"
 [[env.dev.kv_namespaces]]
 binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
+remote = true
 
 # Local dev migration - only v1, skip v2 since VoiceSession doesn't exist locally
 [[env.dev.migrations]]

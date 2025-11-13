@@ -65,21 +65,25 @@ binding = "DB"
 database_name = "mirai-production"
 database_id = "d340a610-eac9-4804-bcbb-ccebe7f1adb4"
 migrations_dir = "../../../packages/database-schema/drizzle/migrations"
+remote = true
 
 # R2 Bucket Binding - User Assets (Private)
 [[env.dev.r2_buckets]]
 binding = "USER_ASSETS"
 bucket_name = "mirai-user-assets"
+remote = true
 
 # KV Namespace Binding - General Cache
 [[env.dev.kv_namespaces]]
 binding = "CACHE"
 id = "0c8c90fd2bc1430ba95596589f68ae1c"
+remote = true
 
 # KV Namespace Binding - Voice Session Cache (short TTL)
 [[env.dev.kv_namespaces]]
 binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
+remote = true
 
 # Durable Objects - API Gateway Session Management
 # Note: script_name is omitted for local dev since VoiceSession is in the same worker

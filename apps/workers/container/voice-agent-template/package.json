@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy:local": "wrangler dev --env dev --port 4000 --name voice-agent-container",
+    "deploy:local": "wrangler dev --env dev --port 4000 --name voice-agent-container --persist-to ../../../.wrangler/state",
     "deploy:cf": "wrangler deploy",
     "build": "tsc",
     "typecheck": "tsc --noEmit",

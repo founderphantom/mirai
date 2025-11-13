@@ -109,7 +109,11 @@ export class VoiceSessionManager {
   }
 
   /**
-   * Get WebSocket URL for voice streaming (OLD - connects to voice agent container)
+   * Get WebSocket URL for voice streaming (connects through stage-web worker)
+   *
+   * Architecture: Client → stage-web (/ws) → VOICE_AGENT service binding → container
+   * This provides lowest latency using internal Cloudflare service bindings (~0.5-2ms)
+   *
    * Constructs proper WebSocket URL based on current page protocol
    */
   getWebSocketUrl(sessionKey: string): string {
@@ -117,13 +121,15 @@ export class VoiceSessionManager {
     const wsBaseUrl = import.meta.env.VITE_WS_URL
 
     if (wsBaseUrl) {
-      return `${wsBaseUrl}/api/voice/ws?sessionKey=${sessionKey}`
+      // stage-web worker proxies /ws to VOICE_AGENT (see apps/stage-web/src/worker.ts:220)
+      return `${wsBaseUrl}/ws?sessionKey=${sessionKey}`
     }
 
     // Production: Auto-detect from page protocol
+    // Uses unified domain for lowest latency (wss://miraichat.app/ws)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    return `${protocol}//${host}/api/voice/ws?sessionKey=${sessionKey}`
+    return `${protocol}//${host}/ws?sessionKey=${sessionKey}`
   }
 
   /**
@@ -131,8 +137,8 @@ export class VoiceSessionManager {
    * Returns /audio-stream endpoint for real-time subtitles and transcription
    */
   getWorkersAIWebSocketUrl(sessionKey: string): string {
-    // In development, use environment variable to avoid protocol issues
-    const wsBaseUrl = import.meta.env.VITE_WS_URL
+    // In development, use dedicated audio stream WebSocket URL
+    const wsBaseUrl = import.meta.env.VITE_AUDIO_STREAM_WS_URL || import.meta.env.VITE_WS_URL
 
     if (wsBaseUrl) {
       return `${wsBaseUrl}/audio-stream?sessionKey=${sessionKey}`

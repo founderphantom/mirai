@@ -2,8 +2,8 @@
  * Audio Streaming Service with Workers AI
  *
  * Handles real-time audio processing using Workers AI models:
- * - smart-turn-v2 for Voice Activity Detection (VAD)
- * - Deepgram Flux for Speech-to-Text (STT)
+ * - @cf/pipecat-ai/smart-turn-v2 for Voice Activity Detection (VAD)
+ * - @cf/openai/whisper for Speech-to-Text (STT)
  *
  * This processes audio at the edge closest to the user for minimal latency.
  */
@@ -208,7 +208,9 @@ export class AudioStreamService {
   }
 
   /**
-   * Run Speech-to-Text using Deepgram Flux
+   * Run Speech-to-Text using OpenAI Whisper
+   * Whisper processes discrete audio chunks and returns transcription
+   * Requires WAV format with proper headers
    */
   private async runSTT(audioData: Uint8Array, isFinal: boolean): Promise<STTResult> {
     try {
@@ -223,24 +225,26 @@ export class AudioStreamService {
         isFinal,
       })
 
-      // Convert audio to base64
-      const base64Audio = this.arrayBufferToBase64(audioData.buffer)
+      // Convert raw PCM to WAV format (Whisper requires WAV file with headers)
+      const wavData = this.pcmToWav(audioData)
 
-      console.log('[AUDIO_STREAM] STT base64 length:', base64Audio.length)
+      console.log('[AUDIO_STREAM] STT WAV data length:', wavData.length)
 
-      // Run Deepgram Flux STT model with correct parameters
-      const response = (await this.env.AI.run('@cf/deepgram/flux', {
-        audio: base64Audio,
-        encoding: 'linear16', // Linear16 (raw signed little-endian 16-bit PCM)
-        sample_rate: '16000', // 16kHz sample rate (as string per API requirements)
-      })) as { text: string }
+      // Convert Uint8Array to integer array (Whisper expects array of integers 0-255)
+      const audioArray = Array.from(wavData)
+
+      // Run OpenAI Whisper STT model
+      // Whisper accepts audio as array of 8-bit unsigned integers representing a WAV file
+      const response = (await this.env.AI.run('@cf/openai/whisper', {
+        audio: audioArray,
+      })) as { text: string; word_count?: number; words?: Array<{ word: string; start: number; end: number }> }
 
       console.log('[AUDIO_STREAM] STT response:', {
         sessionKey: this.config.sessionKey,
         text: response.text,
         textLength: response.text?.length || 0,
+        wordCount: response.word_count || 0,
         isFinal,
-        fullResponse: JSON.stringify(response), // Log full response to see if there are other fields
       })
 
       return {
@@ -343,6 +347,60 @@ export class AudioStreamService {
    */
   private clearBuffer(): void {
     this.audioBuffer = []
+  }
+
+  /**
+   * Convert raw PCM audio to WAV format
+   * Whisper requires a valid WAV file with proper headers
+   */
+  private pcmToWav(pcmData: Uint8Array): Uint8Array {
+    const numChannels = 1 // Mono
+    const sampleRate = this.SAMPLE_RATE // 16000 Hz
+    const bitsPerSample = 16 // 16-bit PCM
+    const bytesPerSample = bitsPerSample / 8
+    const blockAlign = numChannels * bytesPerSample
+    const byteRate = sampleRate * blockAlign
+    const dataSize = pcmData.length
+    const fileSize = 44 + dataSize // 44 bytes for WAV header
+
+    // Create WAV file buffer
+    const wavBuffer = new ArrayBuffer(fileSize)
+    const view = new DataView(wavBuffer)
+
+    // Write WAV header
+    // "RIFF" chunk descriptor
+    this.writeString(view, 0, 'RIFF')
+    view.setUint32(4, fileSize - 8, true) // File size - 8
+    this.writeString(view, 8, 'WAVE')
+
+    // "fmt " sub-chunk
+    this.writeString(view, 12, 'fmt ')
+    view.setUint32(16, 16, true) // Subchunk1Size (16 for PCM)
+    view.setUint16(20, 1, true) // AudioFormat (1 for PCM)
+    view.setUint16(22, numChannels, true) // NumChannels
+    view.setUint32(24, sampleRate, true) // SampleRate
+    view.setUint32(28, byteRate, true) // ByteRate
+    view.setUint16(32, blockAlign, true) // BlockAlign
+    view.setUint16(34, bitsPerSample, true) // BitsPerSample
+
+    // "data" sub-chunk
+    this.writeString(view, 36, 'data')
+    view.setUint32(40, dataSize, true) // Subchunk2Size
+
+    // Copy PCM data after header (starting at byte 44)
+    const wavData = new Uint8Array(wavBuffer)
+    wavData.set(pcmData, 44)
+
+    return wavData
+  }
+
+  /**
+   * Write string to DataView at specified offset
+   */
+  private writeString(view: DataView, offset: number, string: string): void {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i))
+    }
   }
 
   /**

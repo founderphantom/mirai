@@ -34,6 +34,7 @@ cert*/
 *.cer
 *.key
 *.p12
+.dev.vars
 
 # Test coverage
 coverage/

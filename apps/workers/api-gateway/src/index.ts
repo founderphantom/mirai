@@ -34,6 +34,7 @@ app.use('*', cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:8787', // Local stage-web (wrangler dev)
     'https://miraichat.app',
     'https://www.miraichat.app',
     'https://mirai-stage-web.founder-968.workers.dev',

@@ -48,6 +48,7 @@ export function createAuth(env: Env) {
       'http://localhost:3000',
       'http://localhost:5173',
       'http://localhost:4337',
+      'http://localhost:8787', // Local stage-web (wrangler dev)
     ],
     advanced: {
       // Redirect to frontend URL after OAuth, not API URL
