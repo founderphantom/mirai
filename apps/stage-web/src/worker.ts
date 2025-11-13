@@ -69,7 +69,7 @@ export default {
         // 6. Accept WebSocket connection
         server.accept()
 
-        // 7. Set up audio streaming service with voice agent integration
+        // 7. Set up audio streaming service with Flux WebSocket integration
         const audioService = new AudioStreamService(
           { AI: env.AI, SESSION_CACHE: env.SESSION_CACHE, VOICE_AGENT: env.VOICE_AGENT },
           {
@@ -79,29 +79,60 @@ export default {
           },
         )
 
-        // 8. Handle WebSocket messages
+        // 8. Initialize Flux WebSocket connection for real-time STT
+        await audioService.initializeFluxConnection(
+          // Callback for transcription updates (partial and final)
+          (result) => {
+            server.send(
+              JSON.stringify({
+                type: 'subtitle',
+                text: result.text,
+                is_partial: result.is_partial,
+                timestamp: Date.now(),
+              }),
+            )
+          },
+          // Callback for transcription complete (send to voice agent)
+          async (text) => {
+            console.log('[AUDIO_STREAM] Transcription complete, sending to voice agent:', text)
+
+            // Send transcription_complete event to client
+            server.send(
+              JSON.stringify({
+                type: 'transcription_complete',
+                text: text,
+                timestamp: Date.now(),
+              }),
+            )
+
+            // Send to voice agent
+            const success = await audioService.sendToVoiceAgent(text)
+
+            if (!success) {
+              server.send(
+                JSON.stringify({
+                  type: 'error',
+                  message: 'Failed to send transcription to voice agent',
+                  timestamp: Date.now(),
+                }),
+              )
+            }
+          },
+        )
+
+        console.log('[AUDIO_STREAM] Flux connection initialized')
+
+        // 9. Handle WebSocket messages
         server.addEventListener('message', async (event) => {
           try {
             // Handle binary audio data
             if (event.data instanceof ArrayBuffer) {
               const audioData = new Uint8Array(event.data)
 
-              // Process audio chunk
+              // Process audio chunk (streams to Flux + runs VAD for UI feedback)
               const result = await audioService.processAudioChunk(audioData)
 
-              // Send partial transcription for real-time subtitles
-              if (result.transcription) {
-                server.send(
-                  JSON.stringify({
-                    type: 'subtitle',
-                    text: result.transcription.text,
-                    is_partial: result.transcription.is_partial,
-                    timestamp: Date.now(),
-                  }),
-                )
-              }
-
-              // Send VAD status
+              // Send VAD status for UI feedback (speech detection indicator)
               if (result.vadResult) {
                 server.send(
                   JSON.stringify({
@@ -113,32 +144,9 @@ export default {
                 )
               }
 
-              // If speech is complete, send to voice agent for LLM response + TTS
-              if (result.shouldSendToAgent && result.transcription) {
-                console.log('[AUDIO_STREAM] Speech complete, sending to voice agent')
-
-                // Send transcription_complete event to client
-                server.send(
-                  JSON.stringify({
-                    type: 'transcription_complete',
-                    text: result.transcription.text,
-                    timestamp: Date.now(),
-                  }),
-                )
-
-                // Send to voice agent (will stream response via WebSocket /ws endpoint)
-                const success = await audioService.sendToVoiceAgent(result.transcription.text)
-
-                if (!success) {
-                  server.send(
-                    JSON.stringify({
-                      type: 'error',
-                      message: 'Failed to send transcription to voice agent',
-                      timestamp: Date.now(),
-                    }),
-                  )
-                }
-              }
+              // Note: Transcription updates are now handled by Flux callbacks
+              // - Partial transcriptions come via onTranscriptionUpdate callback
+              // - Final transcriptions come via onTranscriptionComplete callback
             }
             // Handle text messages (control messages, ping, etc.)
             else if (typeof event.data === 'string') {
@@ -159,7 +167,7 @@ export default {
                   server.send(
                     JSON.stringify({
                       type: 'status',
-                      buffer: audioService.getBufferState(),
+                      state: audioService.getState(),
                       timestamp: Date.now(),
                     }),
                   )
@@ -180,23 +188,27 @@ export default {
           }
         })
 
-        // 9. Handle WebSocket close
+        // 10. Handle WebSocket close
         server.addEventListener('close', () => {
           console.log('[AUDIO_STREAM] WebSocket closed:', {
             sessionKey,
             userId: sessionData.userId,
           })
+          // Clean up Flux WebSocket connection
+          audioService.cleanup()
         })
 
-        // 10. Handle WebSocket errors
+        // 11. Handle WebSocket errors
         server.addEventListener('error', (error) => {
           console.error('[AUDIO_STREAM] WebSocket error:', {
             sessionKey,
             error,
           })
+          // Clean up on error
+          audioService.cleanup()
         })
 
-        // 11. Return WebSocket upgrade response
+        // 12. Return WebSocket upgrade response
         return new Response(null, {
           status: 101,
           webSocket: client,

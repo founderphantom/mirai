@@ -3,9 +3,13 @@
  *
  * Handles real-time audio processing using Workers AI models:
  * - @cf/pipecat-ai/smart-turn-v2 for Voice Activity Detection (VAD)
- * - @cf/openai/whisper for Speech-to-Text (STT)
+ * - @cf/deepgram/flux for Speech-to-Text (STT) via WebSocket streaming
  *
- * This processes audio at the edge closest to the user for minimal latency.
+ * Flux is specifically designed for real-time conversational AI and provides:
+ * - Native 16-bit PCM support (no conversion needed)
+ * - Streaming transcription with partial updates
+ * - Automatic end-of-turn detection
+ * - Low latency for conversational experiences
  */
 
 export interface AudioStreamConfig {
@@ -24,6 +28,31 @@ export interface STTResult {
   is_partial: boolean
 }
 
+// Flux WebSocket event types
+export interface FluxUpdateEvent {
+  type: 'Update'
+  transcript: string
+  confidence: number
+}
+
+export interface FluxEndOfTurnEvent {
+  type: 'EndOfTurn'
+  transcript: string
+  confidence: number
+}
+
+export interface FluxStartOfTurnEvent {
+  type: 'StartOfTurn'
+}
+
+export interface FluxEagerEndOfTurnEvent {
+  type: 'EagerEndOfTurn'
+  transcript: string
+  confidence: number
+}
+
+export type FluxEvent = FluxUpdateEvent | FluxEndOfTurnEvent | FluxStartOfTurnEvent | FluxEagerEndOfTurnEvent
+
 export interface VoiceSessionData {
   sessionKey: string
   userId: string
@@ -39,21 +68,29 @@ export class AudioStreamService {
   private env: {
     AI: Ai
     SESSION_CACHE: KVNamespace
-    VOICE_AGENT: Fetcher // Re-enabled for voice agent integration
+    VOICE_AGENT: Fetcher
   }
   private config: AudioStreamConfig
 
   // Audio processing configuration
   private readonly SAMPLE_RATE = 16000 // Hz
-  private readonly CHUNK_SIZE = 1024 // samples per chunk
   private readonly VAD_THRESHOLD = 0.8 // Confidence threshold for speech detection
-  private readonly MIN_SPEECH_DURATION_MS = 500 // Minimum speech duration to process (increased from 200ms)
-  private readonly MIN_AUDIO_BYTES = 8000 // Minimum bytes for STT (0.25s at 16kHz 16-bit = 8000 bytes)
 
-  // Buffering
-  private audioBuffer: Uint8Array[] = []
+  // Flux WebSocket for real-time STT
+  private fluxWebSocket: WebSocket | null = null
+  private fluxReady: boolean = false
+
+  // Current transcription state
+  private currentTranscript: string = ''
+  private lastTranscriptUpdate: number = Date.now()
+
+  // VAD state (for UI feedback only, Flux handles turn detection)
   private speechStartTime: number | null = null
   private lastVADCheck: number = Date.now()
+
+  // Callback for sending transcription updates to client
+  private onTranscriptionUpdate: ((result: STTResult) => void) | null = null
+  private onTranscriptionComplete: ((text: string) => Promise<void>) | null = null
 
   constructor(
     env: { AI: Ai; SESSION_CACHE: KVNamespace; VOICE_AGENT: Fetcher },
@@ -64,121 +101,181 @@ export class AudioStreamService {
   }
 
   /**
-   * Process audio chunk with VAD and STT
-   * Returns partial transcription for real-time subtitles
+   * Initialize Flux WebSocket connection for real-time STT
+   * Must be called before processing audio
+   */
+  async initializeFluxConnection(
+    onTranscriptionUpdate: (result: STTResult) => void,
+    onTranscriptionComplete: (text: string) => Promise<void>,
+  ): Promise<void> {
+    this.onTranscriptionUpdate = onTranscriptionUpdate
+    this.onTranscriptionComplete = onTranscriptionComplete
+
+    try {
+      console.log('[AUDIO_STREAM] Initializing Flux WebSocket connection')
+
+      // Establish WebSocket connection to Flux
+      // @ts-expect-error - Workers AI WebSocket API
+      const response = await this.env.AI.run(
+        '@cf/deepgram/flux',
+        {
+          encoding: 'linear16', // 16-bit PCM
+          sample_rate: '16000', // 16kHz
+        },
+        {
+          websocket: true,
+        },
+      )
+
+      // Get WebSocket from response
+      // @ts-expect-error - Workers AI WebSocket response type
+      this.fluxWebSocket = response.webSocket
+      this.fluxReady = false
+
+      // Set up event handlers
+      this.fluxWebSocket.addEventListener('open', () => {
+        this.fluxReady = true
+        console.log('[AUDIO_STREAM] Flux WebSocket connected')
+      })
+
+      this.fluxWebSocket.addEventListener('message', (event) => {
+        this.handleFluxEvent(event.data)
+      })
+
+      this.fluxWebSocket.addEventListener('error', (error) => {
+        console.error('[AUDIO_STREAM] Flux WebSocket error:', error)
+        this.fluxReady = false
+      })
+
+      this.fluxWebSocket.addEventListener('close', () => {
+        console.log('[AUDIO_STREAM] Flux WebSocket closed')
+        this.fluxReady = false
+      })
+
+      // Accept the WebSocket connection
+      this.fluxWebSocket.accept()
+
+      console.log('[AUDIO_STREAM] Flux WebSocket initialized')
+    } catch (error) {
+      console.error('[AUDIO_STREAM] Failed to initialize Flux WebSocket:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Handle Flux WebSocket events
+   */
+  private async handleFluxEvent(data: string | ArrayBuffer): Promise<void> {
+    try {
+      if (typeof data !== 'string') {
+        return
+      }
+
+      const event = JSON.parse(data) as FluxEvent
+
+      console.log('[AUDIO_STREAM] Flux event:', {
+        type: event.type,
+        sessionKey: this.config.sessionKey,
+      })
+
+      switch (event.type) {
+        case 'StartOfTurn':
+          console.log('[AUDIO_STREAM] Flux: User started speaking')
+          this.currentTranscript = ''
+          break
+
+        case 'Update':
+          // Partial transcription - send to frontend for real-time subtitles
+          console.log('[AUDIO_STREAM] Flux partial transcription:', event.transcript)
+          this.currentTranscript = event.transcript
+          this.lastTranscriptUpdate = Date.now()
+
+          if (this.onTranscriptionUpdate) {
+            this.onTranscriptionUpdate({
+              text: event.transcript,
+              is_partial: true,
+            })
+          }
+          break
+
+        case 'EagerEndOfTurn':
+          // Quick turn detection - send partial result
+          console.log('[AUDIO_STREAM] Flux eager end of turn:', event.transcript)
+          this.currentTranscript = event.transcript
+
+          if (this.onTranscriptionUpdate) {
+            this.onTranscriptionUpdate({
+              text: event.transcript,
+              is_partial: false,
+            })
+          }
+          break
+
+        case 'EndOfTurn':
+          // Final transcription - send to voice agent
+          console.log('[AUDIO_STREAM] Flux end of turn (final):', event.transcript)
+          const finalText = event.transcript || this.currentTranscript
+
+          if (finalText && this.onTranscriptionComplete) {
+            await this.onTranscriptionComplete(finalText)
+          }
+
+          // Reset state
+          this.currentTranscript = ''
+          break
+      }
+    } catch (error) {
+      console.error('[AUDIO_STREAM] Error handling Flux event:', error)
+    }
+  }
+
+  /**
+   * Process audio chunk with VAD and stream to Flux
+   * VAD is used for UI feedback, Flux handles turn detection and transcription
    */
   async processAudioChunk(audioData: Uint8Array): Promise<{
-    transcription?: STTResult
     vadResult?: VADResult
-    shouldSendToAgent: boolean
   }> {
-    // Add to buffer
-    this.audioBuffer.push(audioData)
+    // Stream audio to Flux WebSocket immediately (no buffering)
+    if (this.fluxReady && this.fluxWebSocket) {
+      try {
+        // Send raw PCM audio directly to Flux
+        this.fluxWebSocket.send(audioData.buffer)
+      } catch (error) {
+        console.error('[AUDIO_STREAM] Failed to send audio to Flux:', error)
+      }
+    }
 
-    // Check if enough time has passed for VAD check (every 300ms)
+    // Run VAD for UI feedback (every 300ms)
     const now = Date.now()
     if (now - this.lastVADCheck < 300) {
-      return { shouldSendToAgent: false }
+      return {}
     }
 
     this.lastVADCheck = now
 
-    // Run VAD to detect if user is speaking
+    // Run VAD to detect if user is speaking (for UI feedback only)
     const vadResult = await this.runVAD(audioData)
 
-    // Track speech start time
+    // Track speech start time for UI
     if (vadResult.probability > this.VAD_THRESHOLD && !this.speechStartTime) {
       this.speechStartTime = now
-      console.log('[AUDIO_STREAM] Speech started:', {
+      console.log('[AUDIO_STREAM] Speech started (VAD):', {
         sessionKey: this.config.sessionKey,
         probability: vadResult.probability,
       })
     }
 
-    // If we have accumulated speech data, run STT
-    let transcription: STTResult | undefined
-    if (this.speechStartTime && this.audioBuffer.length > 0) {
-      const speechDuration = now - this.speechStartTime
-      const combinedAudio = this.combineBufferedAudio()
-
-      // Only transcribe if minimum speech duration AND minimum audio bytes met
-      if (
-        speechDuration >= this.MIN_SPEECH_DURATION_MS &&
-        combinedAudio.length >= this.MIN_AUDIO_BYTES
-      ) {
-        console.log('[AUDIO_STREAM] Running partial STT:', {
-          sessionKey: this.config.sessionKey,
-          bufferChunks: this.audioBuffer.length,
-          audioBytes: combinedAudio.length,
-          speechDuration,
-        })
-        transcription = await this.runSTT(combinedAudio, false)
-      } else {
-        console.log('[AUDIO_STREAM] Skipping partial STT (insufficient audio):', {
-          sessionKey: this.config.sessionKey,
-          speechDuration,
-          audioBytes: combinedAudio.length,
-          required: this.MIN_AUDIO_BYTES,
-        })
-      }
-    }
-
-    // Check if speech is complete
-    const isComplete =
-      vadResult.is_complete ||
-      (vadResult.probability < this.VAD_THRESHOLD && this.speechStartTime !== null)
-
-    if (isComplete && this.speechStartTime) {
-      const speechDuration = now - this.speechStartTime
-
-      console.log('[AUDIO_STREAM] Speech completed:', {
-        sessionKey: this.config.sessionKey,
-        duration: speechDuration,
-        bufferSize: this.audioBuffer.length,
-      })
-
-      // Get final transcription
-      if (this.audioBuffer.length > 0) {
-        const combinedAudio = this.combineBufferedAudio()
-
-        console.log('[AUDIO_STREAM] Running final STT:', {
-          sessionKey: this.config.sessionKey,
-          bufferChunks: this.audioBuffer.length,
-          audioBytes: combinedAudio.length,
-          speechDuration,
-        })
-
-        // Only run STT if we have enough audio data
-        if (combinedAudio.length >= this.MIN_AUDIO_BYTES) {
-          transcription = await this.runSTT(combinedAudio, true)
-        } else {
-          console.log('[AUDIO_STREAM] Skipping final STT (insufficient audio):', {
-            sessionKey: this.config.sessionKey,
-            audioBytes: combinedAudio.length,
-            required: this.MIN_AUDIO_BYTES,
-          })
-        }
-      } else {
-        console.log('[AUDIO_STREAM] No audio buffer for final transcription:', {
-          sessionKey: this.config.sessionKey,
-        })
-      }
-
-      // Reset state
-      this.clearBuffer()
+    // Reset speech start time when VAD indicates silence
+    if (vadResult.probability < this.VAD_THRESHOLD && this.speechStartTime) {
       this.speechStartTime = null
-
-      return {
-        transcription,
-        vadResult,
-        shouldSendToAgent: true,
-      }
+      console.log('[AUDIO_STREAM] Speech stopped (VAD):', {
+        sessionKey: this.config.sessionKey,
+      })
     }
 
     return {
-      transcription,
       vadResult,
-      shouldSendToAgent: false,
     }
   }
 
@@ -207,59 +304,6 @@ export class AudioStreamService {
     }
   }
 
-  /**
-   * Run Speech-to-Text using OpenAI Whisper
-   * Whisper processes discrete audio chunks and returns transcription
-   * Requires WAV format with proper headers
-   */
-  private async runSTT(audioData: Uint8Array, isFinal: boolean): Promise<STTResult> {
-    try {
-      // Log audio data details
-      const audioLength = audioData.length
-      const durationSeconds = audioLength / (this.SAMPLE_RATE * 2) // 16-bit = 2 bytes per sample
-
-      console.log('[AUDIO_STREAM] STT input:', {
-        sessionKey: this.config.sessionKey,
-        audioLength,
-        durationSeconds: durationSeconds.toFixed(2),
-        isFinal,
-      })
-
-      // Convert raw PCM to WAV format (Whisper requires WAV file with headers)
-      const wavData = this.pcmToWav(audioData)
-
-      console.log('[AUDIO_STREAM] STT WAV data length:', wavData.length)
-
-      // Convert Uint8Array to integer array (Whisper expects array of integers 0-255)
-      const audioArray = Array.from(wavData)
-
-      // Run OpenAI Whisper STT model
-      // Whisper accepts audio as array of 8-bit unsigned integers representing a WAV file
-      const response = (await this.env.AI.run('@cf/openai/whisper', {
-        audio: audioArray,
-      })) as { text: string; word_count?: number; words?: Array<{ word: string; start: number; end: number }> }
-
-      console.log('[AUDIO_STREAM] STT response:', {
-        sessionKey: this.config.sessionKey,
-        text: response.text,
-        textLength: response.text?.length || 0,
-        wordCount: response.word_count || 0,
-        isFinal,
-      })
-
-      return {
-        text: response.text || '',
-        is_partial: !isFinal,
-      }
-    } catch (error) {
-      console.error('[AUDIO_STREAM] STT error:', error)
-
-      return {
-        text: '',
-        is_partial: !isFinal,
-      }
-    }
-  }
 
   /**
    * Send final transcription to voice agent container via HTTP POST to /text endpoint
@@ -326,82 +370,6 @@ export class AudioStreamService {
     }
   }
 
-  /**
-   * Combine buffered audio chunks into single Uint8Array
-   */
-  private combineBufferedAudio(): Uint8Array {
-    const totalLength = this.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0)
-    const combined = new Uint8Array(totalLength)
-
-    let offset = 0
-    for (const chunk of this.audioBuffer) {
-      combined.set(chunk, offset)
-      offset += chunk.length
-    }
-
-    return combined
-  }
-
-  /**
-   * Clear audio buffer
-   */
-  private clearBuffer(): void {
-    this.audioBuffer = []
-  }
-
-  /**
-   * Convert raw PCM audio to WAV format
-   * Whisper requires a valid WAV file with proper headers
-   */
-  private pcmToWav(pcmData: Uint8Array): Uint8Array {
-    const numChannels = 1 // Mono
-    const sampleRate = this.SAMPLE_RATE // 16000 Hz
-    const bitsPerSample = 16 // 16-bit PCM
-    const bytesPerSample = bitsPerSample / 8
-    const blockAlign = numChannels * bytesPerSample
-    const byteRate = sampleRate * blockAlign
-    const dataSize = pcmData.length
-    const fileSize = 44 + dataSize // 44 bytes for WAV header
-
-    // Create WAV file buffer
-    const wavBuffer = new ArrayBuffer(fileSize)
-    const view = new DataView(wavBuffer)
-
-    // Write WAV header
-    // "RIFF" chunk descriptor
-    this.writeString(view, 0, 'RIFF')
-    view.setUint32(4, fileSize - 8, true) // File size - 8
-    this.writeString(view, 8, 'WAVE')
-
-    // "fmt " sub-chunk
-    this.writeString(view, 12, 'fmt ')
-    view.setUint32(16, 16, true) // Subchunk1Size (16 for PCM)
-    view.setUint16(20, 1, true) // AudioFormat (1 for PCM)
-    view.setUint16(22, numChannels, true) // NumChannels
-    view.setUint32(24, sampleRate, true) // SampleRate
-    view.setUint32(28, byteRate, true) // ByteRate
-    view.setUint16(32, blockAlign, true) // BlockAlign
-    view.setUint16(34, bitsPerSample, true) // BitsPerSample
-
-    // "data" sub-chunk
-    this.writeString(view, 36, 'data')
-    view.setUint32(40, dataSize, true) // Subchunk2Size
-
-    // Copy PCM data after header (starting at byte 44)
-    const wavData = new Uint8Array(wavBuffer)
-    wavData.set(pcmData, 44)
-
-    return wavData
-  }
-
-  /**
-   * Write string to DataView at specified offset
-   */
-  private writeString(view: DataView, offset: number, string: string): void {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i))
-    }
-  }
 
   /**
    * Convert ArrayBuffer to base64 string
@@ -416,15 +384,37 @@ export class AudioStreamService {
   }
 
   /**
-   * Get current buffer state (for debugging)
+   * Cleanup and close Flux WebSocket
    */
-  getBufferState(): {
-    bufferSize: number
+  cleanup(): void {
+    if (this.fluxWebSocket) {
+      try {
+        this.fluxWebSocket.close()
+      } catch (error) {
+        console.error('[AUDIO_STREAM] Error closing Flux WebSocket:', error)
+      }
+      this.fluxWebSocket = null
+      this.fluxReady = false
+    }
+
+    this.currentTranscript = ''
+    this.speechStartTime = null
+
+    console.log('[AUDIO_STREAM] Cleanup complete')
+  }
+
+  /**
+   * Get current state (for debugging)
+   */
+  getState(): {
+    fluxReady: boolean
+    currentTranscript: string
     speechStartTime: number | null
     hasSpeech: boolean
   } {
     return {
-      bufferSize: this.audioBuffer.length,
+      fluxReady: this.fluxReady,
+      currentTranscript: this.currentTranscript,
       speechStartTime: this.speechStartTime,
       hasSpeech: this.speechStartTime !== null,
     }
