@@ -2,10 +2,14 @@
  * Workers AI Voice Stream Client
  *
  * Handles WebSocket communication for real-time voice streaming with Workers AI:
- * - Sends PCM audio to Workers AI for VAD/STT processing
- * - Receives real-time subtitles (partial and final transcriptions)
- * - Receives VAD status updates
- * - Receives character responses from voice agent container
+ * - Connects to 3 WebSockets:
+ *   1. /audio-stream - VAD status updates
+ *   2. /flux-stt - Direct Flux STT connection for real-time transcription
+ *   3. /ws - Voice agent responses (TTS, emotions)
+ * - Sends PCM audio to both /audio-stream and /flux-stt
+ * - Receives VAD updates from /audio-stream
+ * - Receives transcriptions from /flux-stt (Flux events)
+ * - Receives character responses from /ws (voice agent)
  */
 
 export interface SubtitleMessage {
@@ -80,10 +84,18 @@ export interface WorkersAIStreamCallbacks {
   onAgentResponse?: (data: any) => void
 }
 
+// Flux WebSocket event types (Flux uses 'event' field, not 'type')
+export interface FluxEvent {
+  event: 'StartOfTurn' | 'Update' | 'EagerEndOfTurn' | 'EndOfTurn'
+  transcript?: string
+  confidence?: number
+}
+
 export class WorkersAIStreamClient {
-  // Dual WebSocket architecture
-  private audioStreamWs: WebSocket | null = null // Workers AI WebSocket (/audio-stream)
-  private agentWs: WebSocket | null = null // Voice Agent WebSocket (/ws)
+  // Triple WebSocket architecture
+  private audioStreamWs: WebSocket | null = null // Workers AI WebSocket (/audio-stream) for VAD
+  private fluxWs: WebSocket | null = null // Flux STT WebSocket (/flux-stt) for transcription
+  private agentWs: WebSocket | null = null // Voice Agent WebSocket (/ws) for responses
 
   private captureAudioContext: AudioContext | null = null // For microphone capture (16kHz)
   private playbackAudioContext: AudioContext | null = null // For TTS playback (24kHz)
@@ -115,19 +127,24 @@ export class WorkersAIStreamClient {
   constructor(private callbacks: WorkersAIStreamCallbacks) {}
 
   /**
-   * Connect to both WebSocket endpoints
-   * @param audioStreamUrl - Workers AI endpoint (/audio-stream) for VAD/STT
+   * Connect to all three WebSocket endpoints
+   * @param audioStreamUrl - Workers AI endpoint (/audio-stream) for VAD
+   * @param fluxUrl - Flux STT endpoint (/flux-stt) for direct STT connection
    * @param agentUrl - Voice Agent endpoint (/ws) for character responses
    */
-  async connect(audioStreamUrl: string, agentUrl: string): Promise<void> {
+  async connect(audioStreamUrl: string, fluxUrl: string, agentUrl: string): Promise<void> {
     try {
-      // Connect to Workers AI WebSocket first (for audio input processing)
+      // Connect to Workers AI WebSocket first (for VAD)
       await this.connectAudioStream(audioStreamUrl)
-      console.log('[WorkersAI] Audio stream connected')
+      console.log('[WorkersAI] Audio stream connected (VAD)')
+
+      // Connect to Flux WebSocket (for direct STT)
+      await this.connectFlux(fluxUrl)
+      console.log('[WorkersAI] Flux connected (STT)')
 
       // Then connect to Voice Agent WebSocket (for character responses)
       await this.connectAgent(agentUrl)
-      console.log('[WorkersAI] Agent connected')
+      console.log('[WorkersAI] Agent connected (TTS/LLM)')
 
       this.startTime = Date.now()
       this.callbacks.onOpen?.()
@@ -140,7 +157,7 @@ export class WorkersAIStreamClient {
 
   /**
    * Connect to Workers AI audio stream WebSocket (/audio-stream)
-   * Handles: VAD, STT, real-time subtitles
+   * Handles: VAD status updates
    */
   private async connectAudioStream(websocketUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -178,6 +195,47 @@ export class WorkersAIStreamClient {
         }
       } catch (error) {
         console.error('[WorkersAI] Audio stream connection error:', error)
+        reject(error)
+      }
+    })
+  }
+
+  /**
+   * Connect to Flux STT WebSocket (/flux-stt)
+   * Handles: Direct real-time speech-to-text transcription
+   */
+  private async connectFlux(websocketUrl: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('[WorkersAI] Connecting to Flux STT:', websocketUrl)
+        this.fluxWs = new WebSocket(websocketUrl)
+        this.fluxWs.binaryType = 'arraybuffer'
+
+        this.fluxWs.onopen = () => {
+          console.log('[WorkersAI] Flux STT WebSocket connected')
+          resolve()
+        }
+
+        this.fluxWs.onerror = (error) => {
+          console.error('[WorkersAI] Flux WebSocket error:', error)
+          const errorMsg = 'Failed to connect to Flux STT'
+          this.callbacks.onError?.(errorMsg)
+          reject(new Error(errorMsg))
+        }
+
+        this.fluxWs.onclose = (event) => {
+          console.log('[WorkersAI] Flux WebSocket closed:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+          })
+        }
+
+        this.fluxWs.onmessage = async (event) => {
+          await this.handleFluxMessage(event.data)
+        }
+      } catch (error) {
+        console.error('[WorkersAI] Flux connection error:', error)
         reject(error)
       }
     })
@@ -261,8 +319,10 @@ export class WorkersAIStreamClient {
 
       // Process audio chunks
       this.scriptProcessor.onaudioprocess = (e) => {
-        // Block audio input if muted or audio stream WebSocket not ready
-        if (this.isMuted || !this.audioStreamWs || this.audioStreamWs.readyState !== WebSocket.OPEN) {
+        // Block audio input if muted or WebSockets not ready
+        if (this.isMuted ||
+            !this.audioStreamWs || this.audioStreamWs.readyState !== WebSocket.OPEN ||
+            !this.fluxWs || this.fluxWs.readyState !== WebSocket.OPEN) {
           return
         }
 
@@ -277,20 +337,23 @@ export class WorkersAIStreamClient {
       this.scriptProcessor.connect(this.captureAudioContext.destination)
 
       // Send audio chunks immediately (real-time streaming)
-      // Workers AI needs continuous audio stream for VAD to work properly
+      // Send to BOTH audio-stream (VAD) AND flux (STT)
       let audioChunksSent = 0
       this.sendInterval = setInterval(() => {
-        if (this.audioBuffer.length > 0 && this.audioStreamWs?.readyState === WebSocket.OPEN) {
+        if (this.audioBuffer.length > 0 &&
+            this.audioStreamWs?.readyState === WebSocket.OPEN &&
+            this.fluxWs?.readyState === WebSocket.OPEN) {
           try {
-            // Send each buffered chunk to audio stream WebSocket
+            // Send each buffered chunk to BOTH WebSockets
             for (const chunk of this.audioBuffer) {
-              this.audioStreamWs.send(chunk.buffer)
+              this.audioStreamWs.send(chunk.buffer) // VAD processing
+              this.fluxWs.send(chunk.buffer) // STT processing
               audioChunksSent++
             }
 
             // Log first few chunks for debugging
             if (audioChunksSent <= 5) {
-              console.log(`[WorkersAI] Sent ${this.audioBuffer.length} audio chunks (total: ${audioChunksSent})`)
+              console.log(`[WorkersAI] Sent ${this.audioBuffer.length} audio chunks to both VAD and Flux (total: ${audioChunksSent})`)
             }
 
             // Clear buffer after sending
@@ -379,10 +442,14 @@ export class WorkersAIStreamClient {
     })
     this.currentSources = []
 
-    // Close both WebSocket connections
+    // Close all three WebSocket connections
     if (this.audioStreamWs) {
       this.audioStreamWs.close()
       this.audioStreamWs = null
+    }
+    if (this.fluxWs) {
+      this.fluxWs.close()
+      this.fluxWs = null
     }
     if (this.agentWs) {
       this.agentWs.close()
@@ -444,8 +511,83 @@ export class WorkersAIStreamClient {
   }
 
   /**
+   * Handle incoming messages from Flux WebSocket (/flux-stt)
+   * Handles: Real-time transcription events from Flux
+   */
+  private async handleFluxMessage(data: ArrayBuffer | string): Promise<void> {
+    // Flux only sends JSON messages
+    if (data instanceof ArrayBuffer) {
+      console.warn('[WorkersAI] Received unexpected binary data from Flux')
+      return
+    }
+
+    try {
+      const event: FluxEvent = JSON.parse(data)
+
+      console.log('[WorkersAI] Flux event:', event.event, event.transcript?.substring(0, 50))
+
+      switch (event.event) {
+        case 'StartOfTurn':
+          console.log('[WorkersAI] Flux: User started speaking')
+          // Clear current subtitle
+          this.currentSubtitle = ''
+          this.isPartialSubtitle = true
+          break
+
+        case 'Update':
+          // Partial transcription - update subtitle in real-time
+          if (event.transcript) {
+            console.log('[WorkersAI] Flux partial transcription:', event.transcript)
+            this.currentSubtitle = event.transcript
+            this.isPartialSubtitle = true
+            this.callbacks.onSubtitle?.(event.transcript, true)
+          }
+          break
+
+        case 'EagerEndOfTurn':
+          // Quick end-of-turn detection - send partial result
+          if (event.transcript) {
+            console.log('[WorkersAI] Flux eager end of turn:', event.transcript)
+            this.currentSubtitle = event.transcript
+            this.isPartialSubtitle = false
+            this.callbacks.onSubtitle?.(event.transcript, false)
+          }
+          break
+
+        case 'EndOfTurn':
+          // Final transcription - send to voice agent via audio-stream WebSocket
+          if (event.transcript) {
+            console.log('[WorkersAI] Flux final transcription:', event.transcript)
+
+            // Clear subtitle
+            this.currentSubtitle = ''
+            this.isPartialSubtitle = false
+
+            // Forward to audio-stream WebSocket so worker can send to voice agent
+            if (this.audioStreamWs && this.audioStreamWs.readyState === WebSocket.OPEN) {
+              this.audioStreamWs.send(JSON.stringify({
+                type: 'transcription',
+                text: event.transcript,
+              }))
+            }
+
+            // Also call callbacks for compatibility
+            this.callbacks.onTranscriptionComplete?.(event.transcript)
+            this.callbacks.onTranscript?.(event.transcript, 'USER')
+          }
+          break
+
+        default:
+          console.warn('[WorkersAI] Unknown Flux event:', event.event)
+      }
+    } catch (error) {
+      console.error('[WorkersAI] Failed to parse Flux message:', error, 'Raw data:', data)
+    }
+  }
+
+  /**
    * Handle incoming messages from audio stream WebSocket (/audio-stream)
-   * Handles: VAD status, STT transcriptions, real-time subtitles
+   * Handles: VAD status updates
    */
   private async handleAudioStreamMessage(data: ArrayBuffer | string): Promise<void> {
     // Should only receive JSON messages from audio stream
@@ -461,37 +603,12 @@ export class WorkersAIStreamClient {
       console.log('[WorkersAI] Audio stream message:', message.type)
 
       switch (message.type) {
-        case 'subtitle':
-          // Update current subtitle
-          this.currentSubtitle = message.text
-          this.isPartialSubtitle = message.is_partial
-
-          // Log final transcriptions
-          if (!message.is_partial) {
-            console.log('[WorkersAI] Final transcription:', message.text)
-          }
-
-          // Call both callbacks for compatibility
-          this.callbacks.onSubtitle?.(message.text, message.is_partial)
-          break
-
         case 'vad':
           console.log('[WorkersAI] VAD status:', {
             complete: message.is_complete,
             probability: message.probability,
           })
           this.callbacks.onVADUpdate?.(message.is_complete, message.probability)
-          break
-
-        case 'transcription_complete':
-          console.log('[WorkersAI] Transcription complete:', message.text)
-          // Clear current subtitle when final transcription is complete
-          this.currentSubtitle = ''
-          this.isPartialSubtitle = false
-
-          // Call both callbacks for compatibility
-          this.callbacks.onTranscriptionComplete?.(message.text)
-          this.callbacks.onTranscript?.(message.text, 'USER')
           break
 
         case 'pong':
@@ -703,6 +820,7 @@ export class WorkersAIStreamClient {
   private cleanup(): void {
     this.stopAudioCapture()
     this.audioStreamWs = null
+    this.fluxWs = null
     this.agentWs = null
   }
 }

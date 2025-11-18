@@ -29,24 +29,25 @@ export interface STTResult {
 }
 
 // Flux WebSocket event types
+// Note: Flux sends 'event' field, not 'type' field
 export interface FluxUpdateEvent {
-  type: 'Update'
+  event: 'Update'
   transcript: string
   confidence: number
 }
 
 export interface FluxEndOfTurnEvent {
-  type: 'EndOfTurn'
+  event: 'EndOfTurn'
   transcript: string
   confidence: number
 }
 
 export interface FluxStartOfTurnEvent {
-  type: 'StartOfTurn'
+  event: 'StartOfTurn'
 }
 
 export interface FluxEagerEndOfTurnEvent {
-  type: 'EagerEndOfTurn'
+  event: 'EagerEndOfTurn'
   transcript: string
   confidence: number
 }
@@ -76,21 +77,12 @@ export class AudioStreamService {
   private readonly SAMPLE_RATE = 16000 // Hz
   private readonly VAD_THRESHOLD = 0.8 // Confidence threshold for speech detection
 
-  // Flux WebSocket for real-time STT
-  private fluxWebSocket: WebSocket | null = null
-  private fluxReady: boolean = false
-
-  // Current transcription state
-  private currentTranscript: string = ''
-  private lastTranscriptUpdate: number = Date.now()
-
-  // VAD state (for UI feedback only, Flux handles turn detection)
+  // VAD state (for UI feedback)
   private speechStartTime: number | null = null
   private lastVADCheck: number = Date.now()
 
-  // Callback for sending transcription updates to client
-  private onTranscriptionUpdate: ((result: STTResult) => void) | null = null
-  private onTranscriptionComplete: ((text: string) => Promise<void>) | null = null
+  // Callback for handling transcription from client (client connects directly to Flux)
+  private onTranscriptionFromClient: ((text: string) => Promise<void>) | null = null
 
   constructor(
     env: { AI: Ai; SESSION_CACHE: KVNamespace; VOICE_AGENT: Fetcher },
@@ -101,152 +93,31 @@ export class AudioStreamService {
   }
 
   /**
-   * Initialize Flux WebSocket connection for real-time STT
-   * Must be called before processing audio
+   * Set callback for handling transcription from client
+   * Client now connects directly to Flux and forwards final transcriptions here
    */
-  async initializeFluxConnection(
-    onTranscriptionUpdate: (result: STTResult) => void,
-    onTranscriptionComplete: (text: string) => Promise<void>,
-  ): Promise<void> {
-    this.onTranscriptionUpdate = onTranscriptionUpdate
-    this.onTranscriptionComplete = onTranscriptionComplete
+  setTranscriptionCallback(onTranscriptionFromClient: (text: string) => Promise<void>): void {
+    this.onTranscriptionFromClient = onTranscriptionFromClient
+  }
 
-    try {
-      console.log('[AUDIO_STREAM] Initializing Flux WebSocket connection')
-
-      // Establish WebSocket connection to Flux
-      // @ts-expect-error - Workers AI WebSocket API
-      const response = await this.env.AI.run(
-        '@cf/deepgram/flux',
-        {
-          encoding: 'linear16', // 16-bit PCM
-          sample_rate: '16000', // 16kHz
-        },
-        {
-          websocket: true,
-        },
-      )
-
-      // Get WebSocket from response
-      // @ts-expect-error - Workers AI WebSocket response type
-      this.fluxWebSocket = response.webSocket
-      this.fluxReady = false
-
-      // Set up event handlers
-      this.fluxWebSocket.addEventListener('open', () => {
-        this.fluxReady = true
-        console.log('[AUDIO_STREAM] Flux WebSocket connected')
-      })
-
-      this.fluxWebSocket.addEventListener('message', (event) => {
-        this.handleFluxEvent(event.data)
-      })
-
-      this.fluxWebSocket.addEventListener('error', (error) => {
-        console.error('[AUDIO_STREAM] Flux WebSocket error:', error)
-        this.fluxReady = false
-      })
-
-      this.fluxWebSocket.addEventListener('close', () => {
-        console.log('[AUDIO_STREAM] Flux WebSocket closed')
-        this.fluxReady = false
-      })
-
-      // Accept the WebSocket connection
-      this.fluxWebSocket.accept()
-
-      console.log('[AUDIO_STREAM] Flux WebSocket initialized')
-    } catch (error) {
-      console.error('[AUDIO_STREAM] Failed to initialize Flux WebSocket:', error)
-      throw error
+  /**
+   * Handle transcription received from client (via Flux WebSocket)
+   * Client connects directly to /flux-stt and sends final transcriptions here
+   */
+  async handleTranscriptionFromClient(text: string): Promise<void> {
+    if (this.onTranscriptionFromClient) {
+      await this.onTranscriptionFromClient(text)
     }
   }
 
   /**
-   * Handle Flux WebSocket events
-   */
-  private async handleFluxEvent(data: string | ArrayBuffer): Promise<void> {
-    try {
-      if (typeof data !== 'string') {
-        return
-      }
-
-      const event = JSON.parse(data) as FluxEvent
-
-      console.log('[AUDIO_STREAM] Flux event:', {
-        type: event.type,
-        sessionKey: this.config.sessionKey,
-      })
-
-      switch (event.type) {
-        case 'StartOfTurn':
-          console.log('[AUDIO_STREAM] Flux: User started speaking')
-          this.currentTranscript = ''
-          break
-
-        case 'Update':
-          // Partial transcription - send to frontend for real-time subtitles
-          console.log('[AUDIO_STREAM] Flux partial transcription:', event.transcript)
-          this.currentTranscript = event.transcript
-          this.lastTranscriptUpdate = Date.now()
-
-          if (this.onTranscriptionUpdate) {
-            this.onTranscriptionUpdate({
-              text: event.transcript,
-              is_partial: true,
-            })
-          }
-          break
-
-        case 'EagerEndOfTurn':
-          // Quick turn detection - send partial result
-          console.log('[AUDIO_STREAM] Flux eager end of turn:', event.transcript)
-          this.currentTranscript = event.transcript
-
-          if (this.onTranscriptionUpdate) {
-            this.onTranscriptionUpdate({
-              text: event.transcript,
-              is_partial: false,
-            })
-          }
-          break
-
-        case 'EndOfTurn':
-          // Final transcription - send to voice agent
-          console.log('[AUDIO_STREAM] Flux end of turn (final):', event.transcript)
-          const finalText = event.transcript || this.currentTranscript
-
-          if (finalText && this.onTranscriptionComplete) {
-            await this.onTranscriptionComplete(finalText)
-          }
-
-          // Reset state
-          this.currentTranscript = ''
-          break
-      }
-    } catch (error) {
-      console.error('[AUDIO_STREAM] Error handling Flux event:', error)
-    }
-  }
-
-  /**
-   * Process audio chunk with VAD and stream to Flux
-   * VAD is used for UI feedback, Flux handles turn detection and transcription
+   * Process audio chunk with VAD for UI feedback
+   * Note: Audio is also sent directly to Flux via client's separate WebSocket connection
    */
   async processAudioChunk(audioData: Uint8Array): Promise<{
     vadResult?: VADResult
   }> {
-    // Stream audio to Flux WebSocket immediately (no buffering)
-    if (this.fluxReady && this.fluxWebSocket) {
-      try {
-        // Send raw PCM audio directly to Flux
-        this.fluxWebSocket.send(audioData.buffer)
-      } catch (error) {
-        console.error('[AUDIO_STREAM] Failed to send audio to Flux:', error)
-      }
-    }
-
-    // Run VAD for UI feedback (every 300ms)
+    // Run VAD for UI feedback (every 300ms to reduce load)
     const now = Date.now()
     if (now - this.lastVADCheck < 300) {
       return {}
@@ -384,22 +255,11 @@ export class AudioStreamService {
   }
 
   /**
-   * Cleanup and close Flux WebSocket
+   * Cleanup resources
    */
   cleanup(): void {
-    if (this.fluxWebSocket) {
-      try {
-        this.fluxWebSocket.close()
-      } catch (error) {
-        console.error('[AUDIO_STREAM] Error closing Flux WebSocket:', error)
-      }
-      this.fluxWebSocket = null
-      this.fluxReady = false
-    }
-
-    this.currentTranscript = ''
     this.speechStartTime = null
-
+    this.onTranscriptionFromClient = null
     console.log('[AUDIO_STREAM] Cleanup complete')
   }
 
@@ -407,14 +267,10 @@ export class AudioStreamService {
    * Get current state (for debugging)
    */
   getState(): {
-    fluxReady: boolean
-    currentTranscript: string
     speechStartTime: number | null
     hasSpeech: boolean
   } {
     return {
-      fluxReady: this.fluxReady,
-      currentTranscript: this.currentTranscript,
       speechStartTime: this.speechStartTime,
       hasSpeech: this.speechStartTime !== null,
     }

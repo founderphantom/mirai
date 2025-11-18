@@ -92,17 +92,19 @@ async function startSession() {
       }
     })
 
-    // Get both WebSocket URLs (dual connection architecture)
+    // Get all three WebSocket URLs (triple connection architecture)
     const audioStreamUrl = sessionManager.getWorkersAIWebSocketUrl(session.sessionKey)
+    const fluxUrl = sessionManager.getFluxWebSocketUrl(session.sessionKey)
     const agentUrl = sessionManager.getWebSocketUrl(session.sessionKey)
 
     console.log('[VoiceChat] Connecting to Workers AI endpoints:', {
       audioStream: audioStreamUrl,
+      flux: fluxUrl,
       agent: agentUrl,
     })
 
-    // Connect to both WebSockets simultaneously
-    await voiceClient.value.connect(audioStreamUrl, agentUrl)
+    // Connect to all three WebSockets simultaneously
+    await voiceClient.value.connect(audioStreamUrl, fluxUrl, agentUrl)
 
     // 3. Start audio capture immediately (WebSocket onOpen confirms readiness)
     console.log('[VoiceChat] Starting audio capture...')

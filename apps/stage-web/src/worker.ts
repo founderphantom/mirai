@@ -20,6 +20,140 @@ export default {
     const url = new URL(request.url)
     const pathname = url.pathname
 
+    // Handle direct Flux STT WebSocket connection
+    // This returns the Workers AI WebSocket response directly to the client
+    // Client connects to this endpoint for real-time speech-to-text
+    if (pathname === '/flux-stt') {
+      try {
+        // 1. Get and validate session key
+        const sessionKey = url.searchParams.get('sessionKey')
+
+        if (!sessionKey) {
+          console.error('[FLUX_STT] Missing session key')
+          return new Response('Missing session key', { status: 400 })
+        }
+
+        // 2. Validate session from KV cache
+        const sessionData = await env.SESSION_CACHE.get<VoiceSessionData>(
+          `session:${sessionKey}`,
+          { type: 'json' },
+        )
+
+        if (!sessionData) {
+          console.error('[FLUX_STT] Invalid or expired session:', sessionKey)
+          return new Response('Invalid or expired session', { status: 401 })
+        }
+
+        // 3. Check expiration
+        if (Date.now() > sessionData.expiresAt) {
+          console.error('[FLUX_STT] Session expired:', sessionKey)
+          await env.SESSION_CACHE.delete(`session:${sessionKey}`)
+          return new Response('Session expired', { status: 401 })
+        }
+
+        // 4. Check if WebSocket upgrade
+        const upgradeHeader = request.headers.get('Upgrade')
+        if (upgradeHeader !== 'websocket') {
+          return new Response('Expected WebSocket upgrade', { status: 426 })
+        }
+
+        console.log('[FLUX_STT] Initializing direct Flux WebSocket connection:', {
+          sessionKey,
+          userId: sessionData.userId,
+          characterId: sessionData.characterId,
+        })
+
+        // 5. Create WebSocket pair for proxying client <-> Flux
+        const pair = new WebSocketPair()
+        const [client, server] = Object.values(pair)
+
+        // Accept the server side
+        server.accept()
+
+        // 6. Create Flux WebSocket connection
+        const fluxResponse = await env.AI.run(
+          '@cf/deepgram/flux',
+          {
+            encoding: 'linear16', // 16-bit PCM
+            sample_rate: '16000', // 16kHz
+          },
+          {
+            websocket: true,
+          },
+        )
+
+        // 7. Extract and accept the Flux WebSocket
+        const fluxWs = fluxResponse.webSocket
+        if (!fluxWs) {
+          console.error('[FLUX_STT] No WebSocket in Flux response')
+          return new Response('Failed to get Flux WebSocket', { status: 500 })
+        }
+
+        fluxWs.accept()
+        console.log('[FLUX_STT] Flux WebSocket accepted')
+
+        // 8. Proxy messages: Client → Flux (audio data)
+        server.addEventListener('message', (event) => {
+          try {
+            if (event.data instanceof ArrayBuffer) {
+              // Forward audio data to Flux
+              fluxWs.send(event.data)
+            }
+          } catch (error) {
+            console.error('[FLUX_STT] Error forwarding to Flux:', error)
+          }
+        })
+
+        // 9. Proxy messages: Flux → Client (transcription events)
+        fluxWs.addEventListener('message', (event) => {
+          try {
+            // Forward Flux events to client
+            server.send(event.data)
+          } catch (error) {
+            console.error('[FLUX_STT] Error forwarding from Flux:', error)
+          }
+        })
+
+        // 10. Handle connection errors
+        server.addEventListener('close', (event) => {
+          console.log('[FLUX_STT] Client WebSocket closed:', { code: event.code, reason: event.reason })
+          try {
+            fluxWs.close(1000, 'Client disconnected')
+          } catch (error) {
+            console.error('[FLUX_STT] Error closing Flux WebSocket:', error)
+          }
+        })
+
+        fluxWs.addEventListener('close', (event) => {
+          console.log('[FLUX_STT] Flux WebSocket closed:', { code: event.code, reason: event.reason })
+          try {
+            server.close(1000, 'Flux disconnected')
+          } catch (error) {
+            console.error('[FLUX_STT] Error closing client WebSocket:', error)
+          }
+        })
+
+        server.addEventListener('error', (error) => {
+          console.error('[FLUX_STT] Client WebSocket error:', error)
+        })
+
+        fluxWs.addEventListener('error', (error) => {
+          console.error('[FLUX_STT] Flux WebSocket error:', error)
+        })
+
+        console.log('[FLUX_STT] WebSocket proxy established, returning to client')
+
+        // 11. Return WebSocket upgrade response with client side of pair
+        return new Response(null, {
+          status: 101,
+          webSocket: client,
+        })
+      } catch (error) {
+        console.error('[FLUX_STT] Failed to create Flux WebSocket:', error)
+        return new Response('Failed to establish Flux WebSocket connection', { status: 500 })
+      }
+    }
+
     // Handle audio streaming with Workers AI (VAD + STT)
     // This processes audio at the edge for minimal latency and real-time subtitles
     if (pathname === '/audio-stream') {
@@ -69,7 +203,7 @@ export default {
         // 6. Accept WebSocket connection
         server.accept()
 
-        // 7. Set up audio streaming service with Flux WebSocket integration
+        // 7. Set up audio streaming service for VAD
         const audioService = new AudioStreamService(
           { AI: env.AI, SESSION_CACHE: env.SESSION_CACHE, VOICE_AGENT: env.VOICE_AGENT },
           {
@@ -79,48 +213,26 @@ export default {
           },
         )
 
-        // 8. Initialize Flux WebSocket connection for real-time STT
-        await audioService.initializeFluxConnection(
-          // Callback for transcription updates (partial and final)
-          (result) => {
+        // 8. Set callback for handling transcriptions from client
+        // Client connects directly to /flux-stt and forwards final transcriptions here
+        audioService.setTranscriptionCallback(async (text) => {
+          console.log('[AUDIO_STREAM] Received transcription from client, sending to voice agent:', text)
+
+          // Send to voice agent
+          const success = await audioService.sendToVoiceAgent(text)
+
+          if (!success) {
             server.send(
               JSON.stringify({
-                type: 'subtitle',
-                text: result.text,
-                is_partial: result.is_partial,
+                type: 'error',
+                message: 'Failed to send transcription to voice agent',
                 timestamp: Date.now(),
               }),
             )
-          },
-          // Callback for transcription complete (send to voice agent)
-          async (text) => {
-            console.log('[AUDIO_STREAM] Transcription complete, sending to voice agent:', text)
+          }
+        })
 
-            // Send transcription_complete event to client
-            server.send(
-              JSON.stringify({
-                type: 'transcription_complete',
-                text: text,
-                timestamp: Date.now(),
-              }),
-            )
-
-            // Send to voice agent
-            const success = await audioService.sendToVoiceAgent(text)
-
-            if (!success) {
-              server.send(
-                JSON.stringify({
-                  type: 'error',
-                  message: 'Failed to send transcription to voice agent',
-                  timestamp: Date.now(),
-                }),
-              )
-            }
-          },
-        )
-
-        console.log('[AUDIO_STREAM] Flux connection initialized')
+        console.log('[AUDIO_STREAM] Audio stream initialized for VAD')
 
         // 9. Handle WebSocket messages
         server.addEventListener('message', async (event) => {
@@ -144,11 +256,10 @@ export default {
                 )
               }
 
-              // Note: Transcription updates are now handled by Flux callbacks
-              // - Partial transcriptions come via onTranscriptionUpdate callback
-              // - Final transcriptions come via onTranscriptionComplete callback
+              // Note: Transcriptions now come from client's direct Flux connection
+              // Client handles Flux events and forwards final transcriptions here via text message
             }
-            // Handle text messages (control messages, ping, etc.)
+            // Handle text messages (control messages, ping, transcriptions, etc.)
             else if (typeof event.data === 'string') {
               try {
                 const message = JSON.parse(event.data)
@@ -161,6 +272,11 @@ export default {
                       timestamp: Date.now(),
                     }),
                   )
+                }
+                // Handle transcription from client (forwarded from Flux)
+                else if (message.type === 'transcription') {
+                  console.log('[AUDIO_STREAM] Received transcription from client:', message.text)
+                  await audioService.handleTranscriptionFromClient(message.text)
                 }
                 // Handle debug/status requests
                 else if (message.type === 'status') {

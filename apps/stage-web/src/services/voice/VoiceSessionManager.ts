@@ -133,8 +133,8 @@ export class VoiceSessionManager {
   }
 
   /**
-   * Get WebSocket URL for Workers AI audio streaming (NEW - edge-based VAD/STT)
-   * Returns /audio-stream endpoint for real-time subtitles and transcription
+   * Get WebSocket URL for Workers AI audio streaming (VAD only)
+   * Returns /audio-stream endpoint for VAD status updates
    */
   getWorkersAIWebSocketUrl(sessionKey: string): string {
     // In development, use dedicated audio stream WebSocket URL
@@ -148,5 +148,23 @@ export class VoiceSessionManager {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     return `${protocol}//${host}/audio-stream?sessionKey=${sessionKey}`
+  }
+
+  /**
+   * Get WebSocket URL for Flux STT (NEW - direct STT connection)
+   * Returns /flux-stt endpoint for real-time speech-to-text
+   */
+  getFluxWebSocketUrl(sessionKey: string): string {
+    // In development, use same base URL as audio stream
+    const wsBaseUrl = import.meta.env.VITE_AUDIO_STREAM_WS_URL || import.meta.env.VITE_WS_URL
+
+    if (wsBaseUrl) {
+      return `${wsBaseUrl}/flux-stt?sessionKey=${sessionKey}`
+    }
+
+    // Production: Auto-detect from page protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return `${protocol}//${host}/flux-stt?sessionKey=${sessionKey}`
   }
 }
