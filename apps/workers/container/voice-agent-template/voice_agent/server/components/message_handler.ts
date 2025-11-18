@@ -102,6 +102,8 @@ export class MessageHandler {
     let input: AudioInput | null = null;
 
     try {
+      console.log(`[MessageHandler] 🔊 Processing captured speech: ${speechBuffer.length} samples (${(speechBuffer.length / this.INPUT_SAMPLE_RATE).toFixed(2)}s)`);
+
       input = {
         audio: {
           // Normalize to get consistent input regardless of how loud or quiet the user's microphone input is.
@@ -112,6 +114,8 @@ export class MessageHandler {
         interactionId: this.currentInteractionId,
         key,
       } as AudioInput;
+
+      console.log(`[MessageHandler] 📥 Adding audio to processing queue (Interaction: ${this.currentInteractionId})`);
 
       this.addToQueue(() =>
         this.executeGraph({
@@ -137,6 +141,9 @@ export class MessageHandler {
     interactionId: string;
     graphWrapper: InworldGraphWrapper;
   }) {
+    const startTime = Date.now();
+    console.log(`[MessageHandler] ⚙️  Starting Inworld graph execution (Interaction: ${interactionId})`);
+
     const { outputStream } = graphWrapper.graph.start(input);
 
     await this.handleResponse(
@@ -144,6 +151,9 @@ export class MessageHandler {
       interactionId,
       this.inworldApp.connections[key].state,
     );
+
+    const duration = Date.now() - startTime;
+    console.log(`[MessageHandler] ✅ Graph execution completed in ${duration}ms (Interaction: ${interactionId})`);
 
     this.send(EventFactory.interactionEnd(interactionId));
 
@@ -177,6 +187,7 @@ export class MessageHandler {
 
       await result.processResponse({
         TTSOutputStream: async (ttsStream: GraphTypes.TTSOutputStream) => {
+          let chunkCount = 0;
           for await (const chunk of ttsStream) {
             if (
               this.interruptionEnabled &&
@@ -190,6 +201,7 @@ export class MessageHandler {
               return;
             }
             responseMessage.content += chunk.text;
+            chunkCount++;
 
             const audioBuffer = await WavEncoder.encode({
               sampleRate: chunk.audio.sampleRate,
@@ -200,6 +212,8 @@ export class MessageHandler {
               isAgent: true,
               name: state.agent.id,
             });
+
+            console.log(`[MessageHandler] 🔊 Sending TTS chunk #${chunkCount}: "${chunk.text}" (${chunk.audio.data.length} samples)`);
 
             this.send(textPacket);
             this.send(

@@ -41,12 +41,27 @@ export interface VoiceStreamCallbacks {
 
 export class VoiceStreamClient {
   private ws: WebSocket | null = null
-  private audioContext: AudioContext | null = null
+  private captureAudioContext: AudioContext | null = null // For microphone capture (16kHz)
+  private playbackAudioContext: AudioContext | null = null // For TTS playback (24kHz)
   private mediaStream: MediaStream | null = null
   private scriptProcessor: ScriptProcessorNode | null = null
   private isMuted = false
   private startTime: number = 0
   private audioPlayedSeconds = 0
+
+  // Audio buffering for interval-based sending (Inworld template pattern)
+  private audioBuffer: Float32Array[] = []
+  private sendInterval: NodeJS.Timeout | null = null
+
+  // Audio playback queue to prevent overlapping
+  private audioQueue: ArrayBuffer[] = []
+  private isPlayingAudio = false
+
+  // Gapless playback with crossfade (Inworld template pattern)
+  private nextStartTime = 0
+  private fadeTime = 0.005 // 5ms crossfade to eliminate clicks
+  private gainNode: GainNode | null = null
+  private currentSources: AudioBufferSourceNode[] = []
 
   constructor(private callbacks: VoiceStreamCallbacks) {}
 
@@ -56,11 +71,12 @@ export class VoiceStreamClient {
   async connect(websocketUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        console.log('[VoiceStream] Connecting to:', websocketUrl)
         this.ws = new WebSocket(websocketUrl)
         this.ws.binaryType = 'arraybuffer'
 
         this.ws.onopen = () => {
-          console.log('[VoiceStream] Connected')
+          console.log('[VoiceStream] WebSocket connected successfully')
           this.startTime = Date.now()
           this.callbacks.onOpen?.()
           resolve()
@@ -73,8 +89,12 @@ export class VoiceStreamClient {
           reject(new Error(errorMsg))
         }
 
-        this.ws.onclose = () => {
-          console.log('[VoiceStream] Disconnected')
+        this.ws.onclose = (event) => {
+          console.log('[VoiceStream] WebSocket closed:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          })
           this.callbacks.onClose?.()
           this.cleanup()
         }
@@ -83,6 +103,7 @@ export class VoiceStreamClient {
           await this.handleMessage(event.data)
         }
       } catch (error) {
+        console.error('[VoiceStream] Connection error:', error)
         reject(error)
       }
     })
@@ -93,6 +114,8 @@ export class VoiceStreamClient {
    */
   async startAudioCapture(): Promise<void> {
     try {
+      console.log('[VoiceStream] Requesting microphone access...')
+
       // Request microphone permission
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -104,30 +127,70 @@ export class VoiceStreamClient {
         },
       })
 
-      // Create audio context
-      this.audioContext = new AudioContext({ sampleRate: 16000 })
-      const source = this.audioContext.createMediaStreamSource(this.mediaStream)
+      console.log('[VoiceStream] Microphone access granted')
+
+      // Verify WebSocket is still open
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        console.error('[VoiceStream] WebSocket not open, state:', this.ws?.readyState)
+        throw new Error('WebSocket connection lost')
+      }
+
+      // Create audio context for capture (16kHz for voice input)
+      this.captureAudioContext = new AudioContext({ sampleRate: 16000 })
+      const source = this.captureAudioContext.createMediaStreamSource(this.mediaStream)
+
+      console.log('[VoiceStream] Capture audio context created, sample rate:', this.captureAudioContext.sampleRate)
 
       // Create audio processor
-      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1)
+      this.scriptProcessor = this.captureAudioContext.createScriptProcessor(4096, 1, 1)
 
+      // Buffer audio chunks instead of sending immediately (Inworld template pattern)
       this.scriptProcessor.onaudioprocess = (e) => {
+        // Block audio input if muted or WebSocket not ready
+        // NOTE: We DO NOT block when character is speaking - this allows interruption!
         if (this.isMuted || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
           return
         }
 
         const audioData = e.inputBuffer.getChannelData(0)
-        const int16Array = this.float32ToInt16(audioData)
-        this.ws.send(int16Array.buffer)
+        // Buffer Float32Array chunks (no conversion needed)
+        this.audioBuffer.push(new Float32Array(audioData))
       }
 
       source.connect(this.scriptProcessor)
-      this.scriptProcessor.connect(this.audioContext.destination)
+      this.scriptProcessor.connect(this.captureAudioContext.destination)
 
-      console.log('[VoiceStream] Audio capture started')
+      // Send batched audio every 75ms (~13 times/sec) - optimized for lower latency
+      // Trade-off: More frequent messages but 25ms faster response
+      let audioChunksSent = 0
+      this.sendInterval = setInterval(() => {
+        if (this.audioBuffer.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
+          try {
+            const message = JSON.stringify({
+              type: 'audio',
+              audio: this.audioBuffer  // Send array of Float32Array chunks
+            })
+
+            this.ws.send(message)
+            audioChunksSent++
+
+            // Log first few batches for debugging
+            if (audioChunksSent <= 3) {
+              console.log(`[VoiceStream] Sent audio batch ${audioChunksSent}, chunks: ${this.audioBuffer.length}`)
+            }
+
+            // Clear buffer after sending
+            this.audioBuffer = []
+          } catch (error) {
+            console.error('[VoiceStream] Failed to send audio batch:', error)
+          }
+        }
+      }, 75)
+
+      console.log('[VoiceStream] Audio capture started successfully with interval-based batching')
     } catch (error) {
       console.error('[VoiceStream] Failed to start audio capture:', error)
-      throw new Error('Microphone access denied')
+      throw new Error('Microphone access denied or WebSocket closed')
     }
   }
 
@@ -135,6 +198,25 @@ export class VoiceStreamClient {
    * Stop capturing microphone audio
    */
   stopAudioCapture(): void {
+    // Clear the send interval
+    if (this.sendInterval) {
+      clearInterval(this.sendInterval)
+      this.sendInterval = null
+    }
+
+    // Send audioSessionEnd signal to backend (Inworld template pattern)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ type: 'audioSessionEnd' }))
+        console.log('[VoiceStream] Sent audioSessionEnd signal')
+      } catch (error) {
+        console.error('[VoiceStream] Failed to send audioSessionEnd:', error)
+      }
+    }
+
+    // Clear audio buffer
+    this.audioBuffer = []
+
     if (this.scriptProcessor) {
       this.scriptProcessor.disconnect()
       this.scriptProcessor = null
@@ -145,10 +227,14 @@ export class VoiceStreamClient {
       this.mediaStream = null
     }
 
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close()
-      this.audioContext = null
+    // Close capture audio context
+    if (this.captureAudioContext && this.captureAudioContext.state !== 'closed') {
+      this.captureAudioContext.close()
+      this.captureAudioContext = null
     }
+
+    // Note: Don't close the playback audio context here
+    // It's used for TTS audio and needs to persist across capture sessions
 
     console.log('[VoiceStream] Audio capture stopped')
   }
@@ -165,11 +251,40 @@ export class VoiceStreamClient {
    * Disconnect and cleanup
    */
   disconnect(): void {
+    // Clear send interval if active
+    if (this.sendInterval) {
+      clearInterval(this.sendInterval)
+      this.sendInterval = null
+    }
+
+    // Stop all playing audio sources
+    this.currentSources.forEach((source) => {
+      try {
+        source.stop()
+      } catch (e) {
+        console.debug('[VoiceStream] Source already stopped', e)
+      }
+    })
+    this.currentSources = []
+
     if (this.ws) {
       this.ws.close()
       this.ws = null
     }
     this.stopAudioCapture()
+
+    // Close playback audio context on full disconnect
+    if (this.playbackAudioContext && this.playbackAudioContext.state !== 'closed') {
+      this.playbackAudioContext.close()
+      this.playbackAudioContext = null
+    }
+    this.gainNode = null
+
+    // Clear audio buffers and reset state
+    this.audioBuffer = []
+    this.audioQueue = []
+    this.isPlayingAudio = false
+    this.nextStartTime = 0
   }
 
   /**
@@ -187,7 +302,7 @@ export class VoiceStreamClient {
    * Handle incoming WebSocket messages
    */
   private async handleMessage(data: ArrayBuffer | string): Promise<void> {
-    // Binary data = audio from TTS
+    // Binary data = audio from TTS (direct ArrayBuffer)
     if (data instanceof ArrayBuffer) {
       await this.playAudio(data)
       return
@@ -195,9 +310,15 @@ export class VoiceStreamClient {
 
     // Text data = JSON message
     try {
-      const message: VoiceMessage = JSON.parse(data)
+      const message: any = JSON.parse(data)
+      const messageType = (message.type || '').toLowerCase().trim()
 
-      switch (message.type) {
+      // Debug: Log all message types for troubleshooting
+      if (messageType && !['audio', 'text', 'new_interaction', 'interaction_end'].includes(messageType)) {
+        console.log('[VoiceStream] Received message type:', messageType, message)
+      }
+
+      switch (messageType) {
         case 'transcript':
           this.callbacks.onTranscript?.(message.text, message.speaker)
           break
@@ -207,51 +328,203 @@ export class VoiceStreamClient {
           break
 
         case 'error':
-          this.callbacks.onError?.(message.message)
+          // Handle both lowercase 'error' and uppercase 'ERROR' from backend
+          const errorMsg = message.message || message.error || 'Unknown error'
+          console.error('[VoiceStream] Error from backend:', errorMsg)
+          this.callbacks.onError?.(errorMsg)
+          break
+
+        case 'text':
+          // Handle TEXT messages from Inworld (both user transcripts and character responses)
+          if (message.text?.text) {
+            // Check routing.source to distinguish user vs character messages
+            const isUser = message.routing?.source?.isUser === true
+
+            // Determine speaker based on routing flags
+            const speaker = isUser ? 'USER' : 'CHARACTER'
+
+            console.log(`[VoiceStream] ${speaker} message:`, message.text.text)
+
+            this.callbacks.onTranscript?.(message.text.text, speaker)
+          }
+          break
+
+        case 'new_interaction':
+          // Handle NEW_INTERACTION messages from Inworld (new conversation turn)
+          // INTERRUPTION HANDLING: Stop all ongoing audio playback and clear queue
+          console.log('[VoiceStream] New interaction started - cancelling ongoing playback for interruption')
+
+          // Stop all currently playing audio sources immediately
+          this.currentSources.forEach((source) => {
+            try {
+              source.stop()
+            } catch (e) {
+              console.debug('[VoiceStream] Source already stopped during interruption', e)
+            }
+          })
+          this.currentSources = []
+
+          // Clear the audio queue (any pending chunks)
+          this.audioQueue = []
+
+          // Reset timing state for gapless playback
+          this.nextStartTime = 0
+
+          // Mark playback as not active so new audio can start immediately
+          this.isPlayingAudio = false
+          break
+
+        case 'interaction_end':
+          // Handle INTERACTION_END messages from Inworld (conversation turn completed)
+          console.log('[VoiceStream] Interaction ended')
+          break
+
+        case 'audio':
+          // Handle AUDIO messages from Inworld (TTS audio chunks)
+          if (message.audio?.chunk) {
+            try {
+              // Decode base64 WAV audio to ArrayBuffer
+              const audioBuffer = this.base64ToArrayBuffer(message.audio.chunk)
+              await this.playAudio(audioBuffer)
+            } catch (error) {
+              console.error('[VoiceStream] Failed to decode/play TTS audio:', error)
+              console.error('[VoiceStream] Audio message structure:', {
+                hasAudio: !!message.audio,
+                hasChunk: !!message.audio?.chunk,
+                chunkLength: message.audio?.chunk?.length || 0,
+              })
+            }
+          } else {
+            console.warn('[VoiceStream] AUDIO message missing audio.chunk:', message)
+          }
           break
 
         default:
-          console.warn('[VoiceStream] Unknown message type:', message)
+          // Only warn for truly unknown message types (not empty or whitespace)
+          if (messageType) {
+            console.warn('[VoiceStream] Unknown message type:', messageType, message)
+          }
       }
     } catch (error) {
-      console.error('[VoiceStream] Failed to parse message:', error)
+      console.error('[VoiceStream] Failed to parse message:', error, 'Raw data:', data)
     }
   }
 
   /**
    * Play audio received from TTS
+   * Uses a queue to prevent overlapping audio chunks
    */
   private async playAudio(arrayBuffer: ArrayBuffer): Promise<void> {
-    if (!this.audioContext) {
-      this.audioContext = new AudioContext({ sampleRate: 24000 })
-    }
+    // Add audio to queue
+    this.audioQueue.push(arrayBuffer)
 
-    try {
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer)
-      const source = this.audioContext.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(this.audioContext.destination)
-      source.start(0)
-
-      // Track audio duration for metrics
-      this.audioPlayedSeconds += audioBuffer.duration
-
-      this.callbacks.onAudio?.(arrayBuffer)
-    } catch (error) {
-      console.error('[VoiceStream] Failed to play audio:', error)
+    // If not currently playing, start processing the queue
+    if (!this.isPlayingAudio) {
+      await this.processAudioQueue()
     }
   }
 
   /**
-   * Convert Float32Array to Int16Array for WebSocket transmission
+   * Process audio queue sequentially to prevent overlapping
    */
-  private float32ToInt16(buffer: Float32Array): Int16Array {
-    const int16 = new Int16Array(buffer.length)
-    for (let i = 0; i < buffer.length; i++) {
-      const s = Math.max(-1, Math.min(1, buffer[i]))
-      int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+  private async processAudioQueue(): Promise<void> {
+    if (this.isPlayingAudio || this.audioQueue.length === 0) {
+      return
     }
-    return int16
+
+    this.isPlayingAudio = true
+
+    while (this.audioQueue.length > 0) {
+      const arrayBuffer = this.audioQueue.shift()!
+
+      try {
+        await this.playAudioChunk(arrayBuffer)
+      } catch (error) {
+        console.error('[VoiceStream] Failed to play audio chunk:', error)
+        // Continue processing queue even if one chunk fails
+      }
+    }
+
+    this.isPlayingAudio = false
+  }
+
+  /**
+   * Play a single audio chunk with gapless playback and crossfade (Inworld template pattern)
+   */
+  private async playAudioChunk(arrayBuffer: ArrayBuffer): Promise<void> {
+    // Initialize playback audio context and gain node if needed (24kHz for TTS output)
+    if (!this.playbackAudioContext) {
+      this.playbackAudioContext = new AudioContext({ sampleRate: 24000 })
+      this.gainNode = this.playbackAudioContext.createGain()
+      this.gainNode.connect(this.playbackAudioContext.destination)
+      this.nextStartTime = 0 // Reset timing on first playback
+    }
+
+    return new Promise(async (resolve, reject) => {
+      try {
+        const audioBuffer = await this.playbackAudioContext!.decodeAudioData(arrayBuffer)
+        const source = this.playbackAudioContext!.createBufferSource()
+        source.buffer = audioBuffer
+
+        // Create fade gain node for crossfade
+        const fadeGain = this.playbackAudioContext!.createGain()
+        fadeGain.connect(this.gainNode!)
+        source.connect(fadeGain)
+
+        // Calculate timing for gapless playback
+        const currentTime = this.playbackAudioContext!.currentTime
+        const startTime = Math.max(currentTime, this.nextStartTime)
+
+        // Apply fade-in at the start (eliminates clicks)
+        fadeGain.gain.setValueAtTime(0, startTime)
+        fadeGain.gain.linearRampToValueAtTime(1, startTime + this.fadeTime)
+
+        // Apply fade-out at the end (eliminates clicks)
+        const endTime = startTime + audioBuffer.duration
+        fadeGain.gain.setValueAtTime(1, endTime - this.fadeTime)
+        fadeGain.gain.linearRampToValueAtTime(0, endTime)
+
+        // Schedule playback with precise timing
+        source.start(startTime)
+        source.stop(endTime)
+
+        // Track source for cleanup
+        this.currentSources.push(source)
+
+        // Clean up when finished
+        source.onended = () => {
+          const index = this.currentSources.indexOf(source)
+          if (index > -1) {
+            this.currentSources.splice(index, 1)
+          }
+          console.log('[VoiceStream] Audio chunk finished playing')
+          resolve()
+        }
+
+        // Update next start time for seamless chaining
+        this.nextStartTime = endTime
+
+        // Track audio duration for metrics
+        this.audioPlayedSeconds += audioBuffer.duration
+
+        this.callbacks.onAudio?.(arrayBuffer)
+      } catch (error) {
+        console.error('[VoiceStream] Failed to decode/play audio:', error)
+        reject(error)
+      }
+    })
+  }
+
+  /**
+   * Convert base64 string to ArrayBuffer
+   */
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes.buffer
   }
 
   /**

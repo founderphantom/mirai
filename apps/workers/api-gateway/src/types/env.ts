@@ -35,6 +35,15 @@ export interface Env {
   POLAR_ACCESS_TOKEN: string
   POLAR_ORGANIZATION_ID: string
   POLAR_WEBHOOK_SECRET: string
+  POLAR_PRO_MONTHLY_ID: string
+  POLAR_PRO_YEARLY_ID: string
+  POLAR_MAX_MONTHLY_ID: string
+  POLAR_MAX_YEARLY_ID: string
+
+  // Polar Sandbox Configuration (currently active for testing)
+  POLAR_SANDBOX_ACCESS_TOKEN: string
+  POLAR_SANDBOX_ORGANIZATION_ID: string
+  POLAR_SANDBOX_WEBHOOK_SECRET: string
 
   // Inworld Configuration
   INWORLD_API_KEY: string
@@ -42,6 +51,9 @@ export interface Env {
 
   // Email Service (Resend)
   RESEND_API_KEY: string
+
+  // Admin
+  ADMIN_SECRET: string
 }
 
 /**

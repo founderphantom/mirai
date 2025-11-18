@@ -3,6 +3,7 @@
  */
 
 export * from './characters'
+export * from './payments'
 
 /**
  * Common API utilities

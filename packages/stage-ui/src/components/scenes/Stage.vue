@@ -2,6 +2,7 @@
 import type { DuckDBWasmDrizzleDatabase } from '@proj-airi/drizzle-duckdb-wasm'
 import type { SpeechProviderWithExtraOptions } from '@xsai-ext/shared-providers'
 import type { UnElevenLabsOptions } from 'unspeech'
+import type { Live2DModelConfig } from '@proj-airi/database-schema'
 
 import type { Emotion } from '../../constants/emotions'
 
@@ -28,12 +29,13 @@ import { useProvidersStore } from '../../stores/providers'
 import { useSettings } from '../../stores/settings'
 import { createQueue } from '../../utils/queue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   paused?: boolean
   focusAt: { x: number, y: number }
   xOffset?: number | string
   yOffset?: number | string
   scale?: number
+  modelConfig?: Live2DModelConfig
 }>(), { paused: false, scale: 1 })
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -274,6 +276,7 @@ defineExpose({
         v-model:state="componentState" min-w="50% <lg:full" min-h="100 sm:100" h-full w-full
         flex-1
         :model-src="stageModelSelectedUrl"
+        :model-config="props.modelConfig"
         :focus-at="focusAt"
         :mouth-open-size="mouthOpenSize"
         :paused="paused"

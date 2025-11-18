@@ -6,22 +6,21 @@
 
 // import { toWAVBase64 } from '@proj-airi/audio'
 // import { useMicVAD, useWhisper } from '@proj-airi/stage-ui/composables'
-import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
+// import { useAudioContext } from '@proj-airi/stage-ui/stores/audio'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 // import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 // import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
-import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
+import { useSettings } from '@proj-airi/stage-ui/stores/settings'
+// import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { BasicTextarea } from '@proj-airi/ui'
 import { useDark } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ChatHistory from '../Widgets/ChatHistory.vue'
 
 const messageInput = ref('')
-const listening = ref(false)
-const showMicrophoneSelect = ref(false)
 const isComposing = ref(false)
 
 // MVP: Disabled provider store - will integrate with Inworld SDK
@@ -29,11 +28,11 @@ const isComposing = ref(false)
 // const { activeProvider, activeModel } = storeToRefs(useConsciousnessStore())
 const { themeColorsHueDynamic } = storeToRefs(useSettings())
 
-const { askPermission } = useSettingsAudioDevice()
-const { enabled, selectedAudioInput } = storeToRefs(useSettingsAudioDevice())
-const { send, onAfterMessageComposed, discoverToolsCompatibility, cleanupMessages } = useChatStore()
+// MVP: Disabled audio device settings - will use Inworld SDK
+// const { askPermission } = useSettingsAudioDevice()
+// const { enabled, selectedAudioInput } = storeToRefs(useSettingsAudioDevice())
+const { onAfterMessageComposed, cleanupMessages } = useChatStore()
 const { messages } = storeToRefs(useChatStore())
-const { audioContext } = useAudioContext()
 const { t } = useI18n()
 
 const isDark = useDark({ disableTransition: false })

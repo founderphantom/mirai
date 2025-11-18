@@ -27,6 +27,24 @@ export interface Agent {
   knowledge?: string[];
 }
 
+/**
+ * Personality Configuration Interface (from database schema)
+ * This is the new format used by the SaaS platform for character presets
+ */
+export interface PersonalityConfig {
+  id?: string; // Generated at runtime in app.ts load() method
+  motivations: string[];
+  flaws: string[];
+  dialogueStyle: string; // Contains the full system prompt with personality, emotes, etc.
+  adjectives: string[];
+  voiceConfig?: {
+    voiceId?: string; // Inworld voice ID (e.g., 'Pixie', 'Stella', 'Atlas')
+    pitch?: number;
+    speed?: number;
+    emotionRange?: 'low' | 'medium' | 'high';
+  };
+}
+
 export interface TextInput {
   key: string;
   text: string;
@@ -41,7 +59,7 @@ export interface AudioInput {
 }
 
 export interface State {
-  agent: Agent;
+  agent: Agent | PersonalityConfig; // Support both legacy Agent and new PersonalityConfig
   userName: string;
   messages: ChatMessage[];
 }
@@ -52,7 +70,7 @@ export interface Connection {
 }
 
 export interface PromptInput {
-  agent: Agent;
+  agent: Agent | PersonalityConfig; // Support both legacy Agent and new PersonalityConfig
   messages: ChatMessage[];
   userName: string;
   userQuery: string;

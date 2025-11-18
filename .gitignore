@@ -34,6 +34,7 @@ cert*/
 *.cer
 *.key
 *.p12
+.dev.vars
 
 # Test coverage
 coverage/
@@ -106,4 +107,5 @@ apps/stage-web/.cache
 apps/stage-web/.r2-assets-backup
 
 settings.local.json
-
+/apps/workers/container/voice-agent-template-original/
+.wrangler/

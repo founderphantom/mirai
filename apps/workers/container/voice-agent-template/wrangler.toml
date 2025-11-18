@@ -9,14 +9,22 @@ workers_dev = false
 
 # Container configuration (Durable Object that runs a container)
 [[containers]]
+name = "voice-agent"
 class_name = "VoiceAgentContainer"
 image = "./Dockerfile"
 max_instances = 10
 
-# Durable Objects bindings
+# Durable Objects bindings - Self-binding to own container
+# Note: script_name is omitted for same-worker container bindings
 [[durable_objects.bindings]]
 name = "VOICE_AGENT"
 class_name = "VoiceAgentContainer"
+
+# KV Namespace Binding - Session Cache (shared with API Gateway)
+# Used for validating session keys from direct WebSocket connections
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
 
 # Migrations have been applied - keeping for reference
 # You can remove these after successful deployment
@@ -24,16 +32,56 @@ class_name = "VoiceAgentContainer"
 tag = "v1"
 new_sqlite_classes = ["VoiceAgentContainer"]
 
-[[migrations]]
-tag = "v2"
-deleted_classes = ["VoiceSession"]
-
-# Environment variables (non-sensitive) - passed to container
+# Environment variables (non-sensitive) - Production
 [vars]
 NODE_ENV = "production"
 WS_APP_PORT = "4000"
-LOG_LEVEL = "info"
+LOG_LEVEL = "debug"
+
+# Local Development Environment
+[env.dev]
+
+# Container configuration
+[[env.dev.containers]]
+name = "voice-agent"
+class_name = "VoiceAgentContainer"
+image = "./Dockerfile"
+max_instances = 10
+
+# Durable Objects bindings
+[[env.dev.durable_objects.bindings]]
+name = "VOICE_AGENT"
+class_name = "VoiceAgentContainer"
+
+# KV Namespace Binding - Session Cache (shared with API Gateway)
+[[env.dev.kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
+remote = true
+
+# Local dev migration - only v1, skip v2 since VoiceSession doesn't exist locally
+[[env.dev.migrations]]
+tag = "v1"
+new_sqlite_classes = ["VoiceAgentContainer"]
+
+[env.dev.vars]
+NODE_ENV = "development"
+WS_APP_PORT = "4000"
+LOG_LEVEL = "debug"
 
 # Observability
 [observability]
 enabled = true
+head_sampling_rate = 1.0
+
+# Custom domain for direct client connections
+# Configure this in Cloudflare Dashboard after deployment:
+# Workers & Pages → voice-agent-container → Settings → Custom Domains
+# Note: DNS record will be automatically created by Cloudflare
+[route]
+pattern = "voice.miraichat.app"
+custom_domain = true
+
+# Required Secrets (set with: wrangler secret put SECRET_NAME)
+# - INWORLD_API_KEY              (required) From Inworld AI dashboard
+# - INWORLD_WORKSPACE_ID         (required) From Inworld AI dashboard

@@ -20,6 +20,8 @@ import characterRoutes from './routes/characters'
 import voiceRoutes from './routes/voice'
 import assetRoutes from './routes/assets'
 import webhookRoutes from './routes/webhooks'
+import adminRoutes from './routes/admin'
+import paymentRoutes from './routes/payments'
 
 // Export Durable Objects
 export { VoiceSession } from './services/voice'
@@ -32,6 +34,7 @@ app.use('*', cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:8787', // Local stage-web (wrangler dev)
     'https://miraichat.app',
     'https://www.miraichat.app',
     'https://mirai-stage-web.founder-968.workers.dev',
@@ -59,17 +62,26 @@ app.all('/api/auth/*', async (c) => {
   return auth.handler(c.req.raw)
 })
 
-// Protected API routes - require authentication
-app.route('/api/characters', characterRoutes)
-app.route('/api/voice', voiceRoutes)
-app.route('/api/assets', assetRoutes)
-
-// Apply auth middleware to all /api/* routes except /api/auth/* and /api/webhooks/*
+// Apply auth middleware to all /api/* routes except /api/auth/*, /api/webhooks/*, /api/voice/ws, /api/assets/public/*, and /admin/*
+// IMPORTANT: Must be defined BEFORE routes to protect them
 app.use('/api/*', async (c, next) => {
   const path = c.req.path
 
-  // Skip auth for auth routes and webhooks
-  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) {
+  // Skip auth for:
+  // - /api/auth/* - Better-Auth handles its own auth
+  // - /api/webhooks/* - Uses signature verification
+  // - /api/voice/ws - Uses sessionKey from KV cache
+  // - /api/assets/public/* - Public assets (preset character thumbnails, etc.)
+  // - /api/characters/presets - Public preset characters list
+  // - /admin/* - Uses admin secret verification (handled in admin routes)
+  if (
+    path.startsWith('/api/auth/') ||
+    path.startsWith('/api/webhooks/') ||
+    path === '/api/voice/ws' ||
+    path.startsWith('/api/assets/public/') ||
+    path === '/api/characters/presets' ||
+    path.startsWith('/admin/')
+  ) {
     return next()
   }
 
@@ -77,8 +89,17 @@ app.use('/api/*', async (c, next) => {
   return authMiddleware(auth)(c, next)
 })
 
+// Protected API routes - require authentication
+app.route('/api/characters', characterRoutes)
+app.route('/api/voice', voiceRoutes)
+app.route('/api/assets', assetRoutes)
+app.route('/api/payments', paymentRoutes)
+
 // Webhook routes - no auth required (signature verification instead)
 app.route('/api/webhooks', webhookRoutes)
+
+// Admin routes - require admin secret
+app.route('/admin', adminRoutes)
 
 // 404 handler
 app.notFound((c) => {

@@ -3,7 +3,7 @@ import { v4 } from 'uuid';
 const { validationResult } = require('express-validator');
 
 import { parseEnvironmentVariables } from '../helpers';
-import { Connection } from '../types';
+import { Connection, Agent, PersonalityConfig } from '../types';
 import { InworldGraphWrapper } from './graph';
 
 export class InworldApp {
@@ -26,54 +26,52 @@ export class InworldApp {
 
   promptTemplate: string;
 
-  /**
-   * Initialize the Inworld app with character-specific configuration
-   * @param apiKey - Inworld API key (from X-Inworld-API-Key header)
-   * @param characterConfig - Optional character-specific voice/model config
-   */
-  async initialize(apiKey: string, characterConfig?: {
-    voiceId?: string;
-    llmModelName?: string;
-    llmProvider?: string;
-    ttsModelId?: string;
-  }) {
+  async initialize(
+    apiKey?: string,
+    voiceConfig?: {
+      voiceId?: string;
+      llmModelName?: string;
+      llmProvider?: string;
+      ttsModelId?: string;
+    },
+  ) {
+    console.log('[InworldApp] 🚀 Starting initialization...');
     this.connections = {};
 
-    // Parse the environment variables for defaults
+    // Parse the environment variables
     const env = parseEnvironmentVariables();
 
-    // Use provided API key (from header) instead of env
-    this.apiKey = apiKey;
-
-    // Use character-specific config if provided, otherwise fall back to env/defaults
-    this.llmModelName = characterConfig?.llmModelName || env.llmModelName;
-    this.llmProvider = characterConfig?.llmProvider || env.llmProvider;
-    this.voiceId = characterConfig?.voiceId || env.voiceId;
-    this.ttsModelId = characterConfig?.ttsModelId || env.ttsModelId;
-
-    // These are always from environment
+    // Use provided values (for multi-tenant) or fall back to env vars (for single-tenant)
+    this.apiKey = apiKey || env.apiKey;
+    this.llmModelName = voiceConfig?.llmModelName || env.llmModelName;
+    this.llmProvider = voiceConfig?.llmProvider || env.llmProvider;
+    this.voiceId = voiceConfig?.voiceId || env.voiceId;
     this.vadModelPath = env.vadModelPath;
     this.graphVisualizationEnabled = env.graphVisualizationEnabled;
     this.interruptionEnabled = env.interruptionEnabled;
+    this.ttsModelId = voiceConfig?.ttsModelId || env.ttsModelId;
 
-    console.log('[InworldApp] Initializing with config:', {
+    console.log('[InworldApp] 🔧 Configuration:', {
+      hasApiKey: !!this.apiKey,
       llmModelName: this.llmModelName,
       llmProvider: this.llmProvider,
       voiceId: this.voiceId,
       ttsModelId: this.ttsModelId,
-      vadModelPath: this.vadModelPath,
-      interruptionEnabled: this.interruptionEnabled,
     });
 
+    // Validate we have an API key from either source
+    if (!this.apiKey) {
+      throw new Error(
+        'Inworld API key required: provide via parameter (multi-tenant) or INWORLD_API_KEY env variable (single-tenant)',
+      );
+    }
+
     // Initialize the VAD client
-    console.log('[InworldApp] Loading VAD model from:', this.vadModelPath);
+    console.log('Loading VAD model from:', this.vadModelPath);
     this.vadClient = await VADFactory.createLocal({
       modelPath: this.vadModelPath,
     });
-    console.log('[InworldApp] VAD model loaded successfully');
 
-    // Create graph for text input
-    console.log('[InworldApp] Creating text input graph...');
     this.graphWithTextInput = await InworldGraphWrapper.create({
       apiKey: this.apiKey,
       llmModelName: this.llmModelName,
@@ -83,10 +81,7 @@ export class InworldApp {
       graphVisualizationEnabled: this.graphVisualizationEnabled,
       ttsModelId: this.ttsModelId,
     });
-    console.log('[InworldApp] Text input graph created');
 
-    // Create graph for audio input
-    console.log('[InworldApp] Creating audio input graph...');
     this.graphWithAudioInput = await InworldGraphWrapper.create({
       apiKey: this.apiKey,
       llmModelName: this.llmModelName,
@@ -97,8 +92,6 @@ export class InworldApp {
       graphVisualizationEnabled: this.graphVisualizationEnabled,
       ttsModelId: this.ttsModelId,
     });
-    console.log('[InworldApp] Audio input graph created');
-    console.log('[InworldApp] Initialization complete');
   }
 
   async load(req: any, res: any) {
@@ -133,7 +126,18 @@ export class InworldApp {
     res.end(JSON.stringify({ agent }));
   }
 
-  private createSystemMessage(agent: any) {
+  private createSystemMessage(agent: Agent | PersonalityConfig): string {
+    // Check if this is the new PersonalityConfig format (has dialogueStyle)
+    if ('dialogueStyle' in agent) {
+      // Build structured personality prompt from all fields
+      const motivations = agent.motivations?.join(', ') || 'Help and engage with users';
+      const flaws = agent.flaws?.join(', ') || 'None specified';
+      const adjectives = agent.adjectives?.join(', ') || 'Friendly';
+
+      return `Your persona is: "${agent.dialogueStyle}". Your motivations are: ${motivations}. Your flaws are: ${flaws}. Your personality traits: ${adjectives}.`;
+    }
+
+    // Fallback to legacy Agent format for backward compatibility
     return `You are: "${agent.name}". Your persona is: "${agent.description}". Your motivation is: "${agent.motivation}".`;
   }
 
@@ -152,8 +156,33 @@ export class InworldApp {
   }
 
   shutdown() {
-    this.connections = {};
-    this.graphWithTextInput.destroy();
-    this.graphWithAudioInput.destroy();
+    console.log('[InworldApp] 🛑 Shutting down Inworld app...');
+
+    try {
+      // Clean up connections
+      this.connections = {};
+
+      // Properly destroy graph wrappers to close gRPC connections
+      if (this.graphWithTextInput) {
+        console.log('[InworldApp] 🗑️  Destroying text input graph...');
+        this.graphWithTextInput.destroy();
+      }
+
+      if (this.graphWithAudioInput) {
+        console.log('[InworldApp] 🗑️  Destroying audio input graph...');
+        this.graphWithAudioInput.destroy();
+      }
+
+      // Destroy VAD client
+      if (this.vadClient) {
+        console.log('[InworldApp] 🗑️  Destroying VAD client...');
+        this.vadClient.destroy();
+      }
+
+      console.log('[InworldApp] ✅ Shutdown complete');
+    } catch (error) {
+      console.error('[InworldApp] ❌ Error during shutdown:', error);
+      throw error;
+    }
   }
 }

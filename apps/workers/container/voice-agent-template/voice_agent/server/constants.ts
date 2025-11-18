@@ -1,16 +1,15 @@
-// Local CommonJS-compatible constants for voice agent server
-// This overrides the parent constants.ts which is treated as ES module
-
-export const DEFAULT_VOICE_ID = 'Dennis';
-export const DEFAULT_LLM_MODEL_NAME = 'gpt-4o-mini';
-export const DEFAULT_PROVIDER = 'openai';
+// Fallback voice ID when character doesn't specify one in personalityConfig.voiceConfig.voiceId
+// Each character should define their own voiceId for unique voice identity
+export const DEFAULT_VOICE_ID = 'Pixie';
+export const DEFAULT_LLM_MODEL_NAME = 'ministral-8b-latest';
+export const DEFAULT_PROVIDER = 'mistral';
 export const DEFAULT_TTS_MODEL_ID = 'inworld-tts-1';
 export const DEFAULT_VAD_MODEL_PATH = '../../models/silero_vad.onnx';
 export const INPUT_SAMPLE_RATE = 16000;
 export const TTS_SAMPLE_RATE = 24000;
 export const PAUSE_DURATION_THRESHOLD_MS = 300; // increase to reduce discarded LLM requests from interruption
-export const MIN_SPEECH_DURATION_MS = 200; // decrease to capture shorter utterances
-export const PRE_ROLL_MS = 500; // Add tolerance for clipping of the beginning of user speech
+export const MIN_SPEECH_DURATION_MS = 150; // decrease to capture shorter utterances
+export const PRE_ROLL_MS = 700; // Add tolerance for clipping of the beginning of user speech
 export const FRAME_PER_BUFFER = 1024;
 export const SPEECH_THRESHOLD = 0.8;
 export const TEXT_CONFIG = {
@@ -24,4 +23,4 @@ export const TEXT_CONFIG = {
   stopSequences: ['\n\n'],
 };
 
-export const WS_APP_PORT = parseInt(process.env.WS_APP_PORT || '4000');
+export const WS_APP_PORT = 4000;

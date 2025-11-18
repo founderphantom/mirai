@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { getCharacters, type Character } from '@/services/api/characters'
+import { ref, onMounted, computed } from 'vue'
+import { getAllCharacters, type Character } from '@/services/api/characters'
 
 const emit = defineEmits<{
   select: [character: Character]
@@ -11,9 +11,18 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedCharacter = ref<Character | null>(null)
 
+// Separate preset and user characters
+const presetCharacters = computed(() =>
+  characters.value.filter(c => c.isPreset)
+)
+
+const userCharacters = computed(() =>
+  characters.value.filter(c => !c.isPreset)
+)
+
 onMounted(async () => {
   try {
-    const response = await getCharacters()
+    const response = await getAllCharacters()
     characters.value = response.characters
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load characters'
@@ -47,36 +56,88 @@ function reloadPage() {
     </div>
 
     <div v-else-if="characters.length === 0" class="empty">
-      <p>You don't have any characters yet.</p>
-      <RouterLink to="/characters/create">Create Your First Character</RouterLink>
+      <p>No characters available.</p>
+      <p class="subtitle">Preset characters will appear here once they're added.</p>
     </div>
 
-    <div v-else class="character-grid">
-      <div
-        v-for="character in characters"
-        :key="character.id"
-        class="character-card"
-        :class="{ selected: selectedCharacter?.id === character.id }"
-        @click="selectCharacter(character)"
-      >
-        <img
-          :src="character.avatarThumbnail || '/default-avatar.png'"
-          :alt="character.displayName"
-        />
-        <h3>{{ character.displayName }}</h3>
-        <p class="personality">{{ character.personalityConfig.dialogueStyle }}</p>
-        <div class="traits">
-          <span
-            v-for="adjective in character.personalityConfig.adjectives.slice(0, 3)"
-            :key="adjective"
-            class="trait"
+    <div v-else class="characters-container">
+      <!-- Preset Characters Section -->
+      <div v-if="presetCharacters.length > 0" class="character-section">
+        <h3 class="section-title">
+          <span class="icon">✨</span>
+          Preset Characters
+        </h3>
+        <div class="character-grid">
+          <div
+            v-for="character in presetCharacters"
+            :key="character.id"
+            class="character-card preset"
+            :class="{ selected: selectedCharacter?.id === character.id }"
+            @click="selectCharacter(character)"
           >
-            {{ adjective }}
-          </span>
+            <div class="preset-badge">✨ Preset</div>
+            <img
+              :src="character.avatarThumbnail || '/default-avatar.png'"
+              :alt="character.displayName"
+            />
+            <h3>{{ character.displayName }}</h3>
+            <p v-if="character.description" class="description">
+              {{ character.description }}
+            </p>
+            <p class="personality">{{ character.personalityConfig.dialogueStyle }}</p>
+            <div class="traits">
+              <span
+                v-for="adjective in character.personalityConfig.adjectives.slice(0, 3)"
+                :key="adjective"
+                class="trait"
+              >
+                {{ adjective }}
+              </span>
+            </div>
+            <p class="conversations">
+              {{ character.totalConversations }} conversations
+            </p>
+          </div>
         </div>
-        <p class="conversations">
-          {{ character.totalConversations }} conversations
-        </p>
+      </div>
+
+      <!-- User Characters Section -->
+      <div v-if="userCharacters.length > 0" class="character-section">
+        <h3 class="section-title">
+          <span class="icon">👤</span>
+          My Characters
+        </h3>
+        <div class="character-grid">
+          <div
+            v-for="character in userCharacters"
+            :key="character.id"
+            class="character-card"
+            :class="{ selected: selectedCharacter?.id === character.id }"
+            @click="selectCharacter(character)"
+          >
+            <img
+              :src="character.avatarThumbnail || '/default-avatar.png'"
+              :alt="character.displayName"
+            />
+            <h3>{{ character.displayName }}</h3>
+            <p v-if="character.description" class="description">
+              {{ character.description }}
+            </p>
+            <p class="personality">{{ character.personalityConfig.dialogueStyle }}</p>
+            <div class="traits">
+              <span
+                v-for="adjective in character.personalityConfig.adjectives.slice(0, 3)"
+                :key="adjective"
+                class="trait"
+              >
+                {{ adjective }}
+              </span>
+            </div>
+            <p class="conversations">
+              {{ character.totalConversations }} conversations
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -187,6 +248,40 @@ function reloadPage() {
   background-color: #5568d3;
 }
 
+.empty .subtitle {
+  font-size: 0.9rem;
+  color: #9ca3af;
+  margin-top: 0.5rem;
+}
+
+.characters-container {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+.character-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.section-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a202c;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.section-title .icon {
+  font-size: 1.75rem;
+}
+
 .character-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -201,12 +296,37 @@ function reloadPage() {
   cursor: pointer;
   transition: all 0.2s ease;
   background: white;
+  position: relative;
+}
+
+.character-card.preset {
+  border-color: #fbbf24;
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.preset-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+  z-index: 1;
 }
 
 .character-card:hover {
   border-color: #667eea;
   transform: translateY(-4px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.character-card.preset:hover {
+  border-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
 }
 
 .character-card.selected {
@@ -228,6 +348,13 @@ function reloadPage() {
   font-weight: 600;
   color: #1a202c;
   margin-bottom: 0.5rem;
+}
+
+.description {
+  color: #374151;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
 }
 
 .personality {

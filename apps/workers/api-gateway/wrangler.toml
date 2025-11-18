@@ -7,7 +7,8 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "mirai-production"
-database_id = "0e9b450e-3ee6-4cf8-b78b-f28d29907e81"
+database_id = "d340a610-eac9-4804-bcbb-ccebe7f1adb4"
+migrations_dir = "../../../packages/database-schema/drizzle/migrations"
 
 # R2 Bucket Binding - User Assets (Private)
 [[r2_buckets]]
@@ -25,12 +26,13 @@ binding = "SESSION_CACHE"
 id = "f9761f3bee6d41b28b3bbb5d1355e822"
 
 # Durable Objects - API Gateway Session Management
+# Note: script_name is omitted since VoiceSession is defined in this same worker
 [[durable_objects.bindings]]
 name = "VOICE_SESSION"
 class_name = "VoiceSession"
-script_name = "mirai-api-gateway"
 
 # Service Binding - Voice Agent Worker
+# Binds to the worker, which internally proxies to its container
 [[services]]
 binding = "VOICE_AGENT"
 service = "voice-agent-container"
@@ -43,24 +45,96 @@ new_sqlite_classes = ["VoiceSession"]
 # Environment Variables
 [vars]
 ENVIRONMENT = "production"
-# BETTER_AUTH_URL should match your production domain
-# Use custom domain if available, otherwise use workers.dev URL
-BETTER_AUTH_URL = "https://mirai-api-gateway.founder-968.workers.dev"
-FRONTEND_URL = "https://mirai-stage-web.founder-968.workers.dev"
+LOG_LEVEL = "debug"
+# BETTER_AUTH_URL should match your API domain for OAuth callbacks
+# Using api.miraichat.app since we're bypassing the stage-web proxy
+BETTER_AUTH_URL = "https://miraichat.app"
+FRONTEND_URL = "https://miraichat.app"
+
+# Polar Configuration
+# Organization ID and Product IDs from Polar dashboard
+POLAR_ORGANIZATION_ID = "60a4b19f-1344-4c5f-b60c-1590bbe321fb"
+POLAR_PRO_MONTHLY_ID = "c540d579-d932-459f-bc8c-c6f73c7091b3"
+POLAR_PRO_YEARLY_ID = "15a6e08c-84d7-4076-a622-6f8e100bfa07"
+POLAR_MAX_MONTHLY_ID = "005f746f-e207-4a00-b25c-a3d1c8f97084"
+POLAR_MAX_YEARLY_ID = "bdd7e461-7fcd-431e-a266-6891e1758781"
+
+# D1 Database Binding
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "mirai-production"
+database_id = "d340a610-eac9-4804-bcbb-ccebe7f1adb4"
+migrations_dir = "../../../packages/database-schema/drizzle/migrations"
+remote = true
+
+# R2 Bucket Binding - User Assets (Private)
+[[env.dev.r2_buckets]]
+binding = "USER_ASSETS"
+bucket_name = "mirai-user-assets"
+remote = true
+
+# KV Namespace Binding - General Cache
+[[env.dev.kv_namespaces]]
+binding = "CACHE"
+id = "0c8c90fd2bc1430ba95596589f68ae1c"
+remote = true
+
+# KV Namespace Binding - Voice Session Cache (short TTL)
+[[env.dev.kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "f9761f3bee6d41b28b3bbb5d1355e822"
+remote = true
+
+# Durable Objects - API Gateway Session Management
+# Note: script_name is omitted for local dev since VoiceSession is in the same worker
+[[env.dev.durable_objects.bindings]]
+name = "VOICE_SESSION"
+class_name = "VoiceSession"
+
+# Service Binding - Voice Agent Container
+# Works in local dev when both workers are running with wrangler dev:
+#   - Terminal 1: cd apps/workers/container/voice-agent-template && pnpm dev
+#   - Terminal 2: cd apps/workers/api-gateway && pnpm dev
+[[env.dev.services]]
+binding = "VOICE_AGENT"
+service = "voice-agent-container"
+environment = "dev"
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "debug"
+BETTER_AUTH_URL = "http://localhost:8787"
+FRONTEND_URL = "http://localhost:8787"
+
+# Polar Configuration
+# Organization ID and Product IDs from Polar dashboard
+POLAR_ORGANIZATION_ID = "60a4b19f-1344-4c5f-b60c-1590bbe321fb"
+POLAR_PRO_MONTHLY_ID = "c540d579-d932-459f-bc8c-c6f73c7091b3"
+POLAR_PRO_YEARLY_ID = "15a6e08c-84d7-4076-a622-6f8e100bfa07"
+POLAR_MAX_MONTHLY_ID = "005f746f-e207-4a00-b25c-a3d1c8f97084"
+POLAR_MAX_YEARLY_ID = "bdd7e461-7fcd-431e-a266-6891e1758781"
 
 # Required Secrets (set with: wrangler secret put SECRET_NAME)
 # See AUTHENTICATION_SETUP.md in project root for detailed instructions
 #
+# Auth & OAuth:
 # - BETTER_AUTH_SECRET           (required) Generate with: npx @better-auth/cli secret
 # - GOOGLE_CLIENT_ID             (required) From Google Cloud Console
 # - GOOGLE_CLIENT_SECRET         (required) From Google Cloud Console
 # - DISCORD_CLIENT_ID            (optional) From Discord Developer Portal
 # - DISCORD_CLIENT_SECRET        (optional) From Discord Developer Portal
-# - POLAR_ACCESS_TOKEN           (required) From Polar dashboard
-# - POLAR_ORGANIZATION_ID        (required) From Polar dashboard
-# - POLAR_WEBHOOK_SECRET         (required) From Polar dashboard
+#
+# Polar Payment Integration:
+# - POLAR_ACCESS_TOKEN           (required) From Polar dashboard → Settings → API
+# - POLAR_WEBHOOK_SECRET         (required) From Polar dashboard → Settings → Webhooks
+#
+# Inworld AI:
 # - INWORLD_API_KEY              (required) From Inworld AI dashboard
 # - INWORLD_WORKSPACE_ID         (required) From Inworld AI dashboard
+#
+# Email Service:
+# - RESEND_API_KEY               (required) From Resend dashboard
 
 [observability]
 enabled = true
+head_sampling_rate = 1.0

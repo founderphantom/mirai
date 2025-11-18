@@ -52,8 +52,8 @@ export class CharacterPoolManager {
 
   // Configuration
   private readonly MAX_SESSIONS_PER_CONTAINER = 100
-  private readonly CHARACTER_IDLE_TIMEOUT = 10 * 60 * 1000 // 10 minutes
-  private readonly CLEANUP_INTERVAL = 60 * 1000 // 1 minute
+  private readonly CHARACTER_IDLE_TIMEOUT = 2 * 60 * 1000 // 2 minutes (reduced from 10 to prevent gRPC connection buildup)
+  private readonly CLEANUP_INTERVAL = 30 * 1000 // 30 seconds (more frequent cleanup)
 
   private constructor() {
     this.startCleanupTimer()
@@ -102,8 +102,24 @@ export class CharacterPoolManager {
     const app = new InworldApp()
 
     // Initialize the Inworld app with character-specific config
-    console.log(`[CharacterPool] Initializing Inworld app for character ${characterId}`)
-    await app.initialize(config.apiKey, config.voiceConfig)
+    console.log(`[CharacterPool] Initializing Inworld app for character ${characterId}`, {
+      hasApiKey: !!config.apiKey,
+      apiKeyLength: config.apiKey?.length,
+      voiceConfig: config.voiceConfig,
+    })
+
+    try {
+      await app.initialize(config.apiKey, config.voiceConfig)
+    } catch (error) {
+      console.error(`[CharacterPool] Failed to initialize character ${characterId}:`, {
+        error,
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      })
+      throw error
+    }
 
     // Store the character instance
     charInstance = {

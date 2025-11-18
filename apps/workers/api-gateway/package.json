@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --port 4337 --env dev --name mirai-api-gateway --persist-to ../../../.wrangler/state",
+    "deploy:cf": "wrangler deploy",
     "tail": "wrangler tail",
     "typecheck": "tsc --noEmit"
   },

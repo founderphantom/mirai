@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Live2DModelConfig } from '@proj-airi/database-schema'
 import { ref, watch } from 'vue'
 
 import Screen from '../misc/Screen.vue'
@@ -7,8 +8,9 @@ import Live2DModel from './live2d/Model.vue'
 
 import '../../utils/live2d-zip-loader'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   modelSrc?: string
+  modelConfig?: Live2DModelConfig
 
   paused?: boolean
   mouthOpenSize?: number
@@ -58,6 +60,7 @@ defineExpose({
       <Live2DModel
         v-model:state="componentStateModel"
         :model-src="modelSrc"
+        :model-config="props.modelConfig"
         :app="app"
         :mouth-open-size="mouthOpenSize"
         :width="width"

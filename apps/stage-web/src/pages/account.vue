@@ -1,13 +1,31 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useSession, authClient } from '@/lib/auth'
 import { useRouter } from 'vue-router'
+import { openCustomerPortal, getSubscription, type SubscriptionResponse } from '@/services/api/payments'
+
+// Get API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
 
 const router = useRouter()
 const sessionData = useSession()
 const session = computed(() => sessionData.value.data)
 const user = computed(() => session.value?.user)
 const isLoading = computed(() => sessionData.value.isPending)
+
+// Type definitions
+interface AvatarUploadResponse {
+  url: string
+}
+
+// Subscription data state
+const subscriptionData = ref<SubscriptionResponse | null>(null)
+const isLoadingSubscription = ref(false)
+const subscriptionError = ref<string | null>(null)
+
+// Computed properties for subscription
+const userSubscriptionTier = computed(() => subscriptionData.value?.tier || 'free')
+const userSubscriptionStatus = computed(() => subscriptionData.value?.status)
 
 // Form states
 const isEditingName = ref(false)
@@ -26,9 +44,74 @@ const success = ref<string | null>(null)
 const avatarFile = ref<File | null>(null)
 const avatarPreview = ref<string | null>(null)
 
-onMounted(() => {
+// Fetch subscription data
+async function fetchSubscription() {
+  if (!user.value) {
+    console.log('[Account] Skipping subscription fetch - user not loaded')
+    return
+  }
+
+  console.log('[Account] Fetching subscription data...', {
+    userId: user.value.id,
+    userTier: user.value.subscriptionTier,
+  })
+
+  isLoadingSubscription.value = true
+  subscriptionError.value = null // Clear previous errors
+
+  try {
+    subscriptionData.value = await getSubscription()
+    console.log('[Account] Subscription data loaded successfully:', {
+      tier: subscriptionData.value?.tier,
+      hasUsage: !!subscriptionData.value?.usage,
+      voiceMinutes: subscriptionData.value?.usage?.voiceMinutes,
+    })
+  } catch (err) {
+    console.error('[Account] Failed to fetch subscription:', err)
+    subscriptionError.value = 'Failed to load subscription data. Please try again.'
+
+    // Set fallback data so usage section still displays with "unknown" state
+    subscriptionData.value = {
+      subscription: null,
+      tier: user.value?.subscriptionTier || 'free',
+      status: user.value?.subscriptionStatus || null,
+      polarCustomerId: user.value?.polarCustomerId || null,
+      usage: {
+        voiceMinutes: 0,
+        voiceMinutesLimit: 20, // Default to free tier limit
+        voiceMinutesRemaining: 0,
+      },
+      limits: {
+        voiceMinutes: 20,
+        characters: 1,
+        features: [],
+      },
+    }
+  } finally {
+    isLoadingSubscription.value = false
+  }
+}
+
+// Watch for user to become available and fetch subscription
+// This handles the race condition where component mounts before auth loads
+watch(
+  () => user.value,
+  async (newUser) => {
+    if (newUser && !subscriptionData.value) {
+      console.log('[Account] User loaded, fetching subscription')
+      await fetchSubscription()
+    }
+  },
+  { immediate: true }, // Check immediately on component mount
+)
+
+onMounted(async () => {
   if (user.value) {
+    console.log('[Account] Component mounted with user already loaded')
     displayName.value = user.value.name || ''
+    // Subscription will be fetched by watcher
+  } else {
+    console.log('[Account] Component mounted, waiting for user to load...')
   }
 })
 
@@ -46,8 +129,8 @@ async function handleUpdateName() {
     success.value = 'Name updated successfully!'
     isEditingName.value = false
 
-    // Refresh session to get updated user data
-    await sessionData.value.refetch()
+    // Note: Session will be refreshed on next page load
+    // Better-Auth doesn't expose a refetch method in the client
   } catch (err) {
     error.value = 'Failed to update name'
     console.error('Update name error:', err)
@@ -131,7 +214,7 @@ async function handleUploadAvatar() {
     formData.append('avatar', avatarFile.value)
 
     // Upload to API Gateway
-    const response = await fetch('/api/assets/avatar', {
+    const response = await fetch(`${API_BASE_URL}/api/assets/avatar`, {
       method: 'POST',
       body: formData,
       credentials: 'include',
@@ -141,7 +224,7 @@ async function handleUploadAvatar() {
       throw new Error('Failed to upload avatar')
     }
 
-    const data = await response.json()
+    const data = await response.json() as AvatarUploadResponse
 
     // Update user profile with new avatar URL
     await authClient.updateUser({
@@ -152,8 +235,8 @@ async function handleUploadAvatar() {
     avatarFile.value = null
     avatarPreview.value = null
 
-    // Refresh session
-    await sessionData.value.refetch()
+    // Note: Session will be refreshed on next page load
+    // Better-Auth doesn't expose a refetch method in the client
   } catch (err) {
     error.value = 'Failed to upload avatar'
     console.error('Upload avatar error:', err)
@@ -171,10 +254,29 @@ function getSubscriptionTierColor(tier?: string) {
   switch (tier) {
     case 'pro':
       return '#667eea'
-    case 'enterprise':
+    case 'max':
       return '#764ba2'
     default:
       return '#6b7280'
+  }
+}
+
+// Handle manage subscription button
+async function handleManageSubscription() {
+  const tier = userSubscriptionTier.value || 'free'
+
+  // If user is on free tier or no subscription, redirect to pricing page
+  if (tier === 'free' || !userSubscriptionStatus.value) {
+    router.push('/pricing')
+    return
+  }
+
+  // If user has active subscription, open customer portal
+  try {
+    await openCustomerPortal()
+  } catch (err) {
+    error.value = 'Failed to open customer portal. Please try again.'
+    console.error('Customer portal error:', err)
   }
 }
 </script>
@@ -221,7 +323,7 @@ function getSubscriptionTierColor(tier?: string) {
               <div class="avatar-display">
                 <img
                   v-if="avatarPreview || user.image"
-                  :src="avatarPreview || user.image"
+                  :src="avatarPreview || user.image || undefined"
                   alt="Profile picture"
                   class="avatar-image"
                 />
@@ -334,33 +436,67 @@ function getSubscriptionTierColor(tier?: string) {
         <div class="settings-section">
           <h2>Subscription</h2>
 
-          <div class="subscription-card">
+          <!-- Loading State -->
+          <div v-if="isLoadingSubscription" class="subscription-loading">
+            <div class="loading-spinner-small"></div>
+            <span>Loading subscription...</span>
+          </div>
+
+          <!-- Subscription Card -->
+          <div v-else class="subscription-card">
+            <!-- Error Banner (if fetch failed) -->
+            <div v-if="subscriptionError" class="subscription-error">
+              <span class="error-icon">⚠️</span>
+              <span class="error-text">{{ subscriptionError }}</span>
+              <button @click="fetchSubscription" class="retry-btn">Retry</button>
+            </div>
+
             <div class="subscription-info">
               <div class="subscription-tier">
                 <span
                   class="tier-badge"
-                  :style="{ backgroundColor: getSubscriptionTierColor(user.subscriptionTier) }"
+                  :style="{ backgroundColor: getSubscriptionTierColor(userSubscriptionTier) }"
                 >
-                  {{ getSubscriptionTierLabel(user.subscriptionTier) }}
+                  {{ getSubscriptionTierLabel(userSubscriptionTier) }}
                 </span>
               </div>
               <div class="subscription-status">
-                <span v-if="user.subscriptionStatus === 'active'" class="status-active">
+                <span v-if="userSubscriptionStatus === 'active'" class="status-active">
                   Active
                 </span>
-                <span v-else-if="user.subscriptionStatus === 'canceled'" class="status-canceled">
+                <span v-else-if="userSubscriptionStatus === 'canceled'" class="status-canceled">
                   Canceled
                 </span>
-                <span v-else-if="user.subscriptionStatus === 'past_due'" class="status-past-due">
+                <span v-else-if="userSubscriptionStatus === 'past_due'" class="status-past-due">
                   Past Due
                 </span>
                 <span v-else class="status-inactive">
                   No active subscription
                 </span>
               </div>
+
+              <!-- Usage Info - ALWAYS SHOWN -->
+              <div class="subscription-usage">
+                <template v-if="subscriptionData?.usage">
+                  <span class="usage-label">Voice Minutes Used:</span>
+                  <span
+                    class="usage-value"
+                    :class="{ 'over-limit': subscriptionData.usage.voiceMinutes > subscriptionData.usage.voiceMinutesLimit && subscriptionData.usage.voiceMinutesLimit !== -1 }"
+                  >
+                    {{ subscriptionData.usage.voiceMinutes }} /
+                    {{ subscriptionData.usage.voiceMinutesLimit === -1 ? 'Unlimited' : subscriptionData.usage.voiceMinutesLimit }}
+                  </span>
+                </template>
+                <template v-else-if="subscriptionError">
+                  <span class="usage-label usage-unavailable">Usage data unavailable</span>
+                </template>
+                <template v-else>
+                  <span class="usage-label">Loading usage...</span>
+                </template>
+              </div>
             </div>
-            <button class="manage-subscription-btn">
-              Manage Subscription
+            <button @click="handleManageSubscription" class="manage-subscription-btn">
+              {{ (userSubscriptionTier === 'free' || !userSubscriptionStatus) ? 'Upgrade Plan' : 'Manage Subscription' }}
             </button>
           </div>
         </div>
@@ -690,18 +826,85 @@ function getSubscriptionTierColor(tier?: string) {
   cursor: not-allowed;
 }
 
+/* Subscription Loading */
+.subscription-loading {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  color: #6b7280;
+}
+
+.loading-spinner-small {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(102, 126, 234, 0.2);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
 /* Subscription Card */
 .subscription-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 1rem;
   padding: 1.5rem;
   background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
   border-radius: 12px;
   border: 2px solid #e2e8f0;
 }
 
+.subscription-error {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.error-icon {
+  font-size: 1.25rem;
+}
+
+.error-text {
+  flex: 1;
+  color: #991b1b;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.retry-btn {
+  padding: 0.375rem 0.875rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #b91c1c;
+}
+
 .subscription-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  gap: 2rem;
+}
+
+.subscription-tier {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -730,6 +933,38 @@ function getSubscriptionTierColor(tier?: string) {
 .status-inactive {
   color: #6b7280;
   font-weight: 600;
+}
+
+.subscription-usage {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 6px;
+}
+
+.usage-label {
+  font-size: 0.875rem;
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.usage-value {
+  font-size: 0.875rem;
+  color: #667eea;
+  font-weight: 700;
+}
+
+.usage-value.over-limit {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.usage-unavailable {
+  color: #9ca3af;
+  font-style: italic;
 }
 
 .manage-subscription-btn {

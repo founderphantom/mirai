@@ -80,7 +80,29 @@ app.get('/ready', (req, res) => {
 
 // Metrics endpoint for monitoring
 app.get('/metrics', (req, res) => {
-  res.status(200).json(characterPool.getMetrics())
+  const poolMetrics = characterPool.getMetrics()
+
+  res.status(200).json({
+    // Character pool metrics
+    pool: poolMetrics,
+
+    // Combined summary
+    timestamp: new Date().toISOString(),
+  })
+})
+
+// Session metrics endpoint - Removed (metrics tracker disabled for performance)
+app.get('/metrics/session/:sessionKey', (req, res) => {
+  const { sessionKey } = req.params
+
+  if (!sessionKey) {
+    return res.status(400).json({ error: 'Missing session key' })
+  }
+
+  res.status(200).json({
+    sessionKey,
+    message: 'Session metrics tracking disabled for performance optimization',
+  })
 })
 
 // WebSocket connection handler with multi-tenant support
@@ -90,17 +112,13 @@ webSocket.on('connection', (ws, request) => {
   // Extract session data from headers (passed from API Gateway)
   const userId = request.headers['x-user-id'] as string
   const characterId = request.headers['x-character-id'] as string
-  const inworldCharacterId = request.headers['x-inworld-character-id'] as string
   const sessionKey = request.headers['x-session-key'] as string
   const conversationId = request.headers['x-conversation-id'] as string
 
   if (!userId || !characterId || !sessionKey) {
-    console.error('[WebSocket] Missing required headers')
     ws.close(4000, 'Missing required headers')
     return
   }
-
-  console.log(`[WebSocket] New connection - Session: ${sessionKey}, User: ${userId}, Character: ${characterId}`)
 
   // Get or create character instance
   let inworldApp
@@ -108,8 +126,6 @@ webSocket.on('connection', (ws, request) => {
     inworldApp = characterPool.getCharacter(characterId)
 
     if (!inworldApp) {
-      console.log(`[WebSocket] Character ${characterId} not loaded yet, checking connections`)
-      // Character not in pool, need to load it first
       ws.close(4001, 'Character not loaded. Call /load first.')
       return
     }
@@ -132,7 +148,6 @@ webSocket.on('connection', (ws, request) => {
   // Get connection state for this session
   const key = sessionKey
   if (!inworldApp.connections?.[key]) {
-    console.error('[WebSocket] Session not found in connections')
     ws.close(4003, 'Session not found')
     return
   }
@@ -140,7 +155,7 @@ webSocket.on('connection', (ws, request) => {
   inworldApp.connections[key].ws = ws
 
   ws.on('error', (error) => {
-    console.error(`[WebSocket] Error for session ${sessionKey}:`, error)
+    console.error('[WebSocket] Error:', error)
   })
 
   const messageHandler = new MessageHandler(inworldApp, (data: any) => {
@@ -155,7 +170,7 @@ webSocket.on('connection', (ws, request) => {
     try {
       messageHandler.handleMessage(data, key)
     } catch (error) {
-      console.error(`[WebSocket] Failed to handle message for session ${sessionKey}:`, error)
+      console.error('[WebSocket] Message handling error:', error)
       ws.send(
         JSON.stringify({
           type: 'ERROR',
@@ -166,15 +181,13 @@ webSocket.on('connection', (ws, request) => {
   })
 
   ws.on('close', () => {
-    console.log(`[WebSocket] Disconnected - Session: ${sessionKey}`)
+    console.log(`[WebSocket] 🔌 Connection closed for session ${sessionKey}`)
 
-    // Remove session from character pool
-    characterPool.removeSession(characterId, sessionKey)
-
-    // Clean up connection
+    // Clean up connection first
     if (inworldApp.connections[key]) {
       delete inworldApp.connections[key]
     }
+    characterPool.removeSession(characterId, sessionKey)
   })
 })
 
@@ -203,8 +216,6 @@ app.post('/load', async (req, res) => {
       return res.status(400).json({ error: 'Missing required headers' })
     }
 
-    console.log(`[Load] Loading character ${characterId} for session ${sessionKey}`)
-
     // Parse voice config from request body if provided
     const voiceConfig = req.body.voiceConfig as {
       voiceId?: string
@@ -214,7 +225,6 @@ app.post('/load', async (req, res) => {
     } | undefined
 
     // Get or create character instance (multi-tenant)
-    // This will initialize the Inworld app if it's a new character
     const inworldApp = await characterPool.getOrCreateCharacter(characterId, inworldCharacterId, {
       agent,
       userName,
@@ -238,21 +248,15 @@ app.post('/load', async (req, res) => {
 
     // Load the agent (this creates the system message)
     await inworldApp.load(req, res)
-
-    console.log(`[Load] Character ${characterId} loaded for session ${sessionKey}`)
-
-    res.status(200).json({
-      success: true,
-      sessionKey,
-      characterId,
-      message: 'Agent loaded successfully',
-    })
   } catch (error) {
-    console.error('[Load] Error loading agent:', error)
-    res.status(500).json({
-      error: 'Failed to load agent',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    })
+    console.error('[Load] Error:', error instanceof Error ? error.message : error)
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to load agent',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 })
 
@@ -272,8 +276,6 @@ app.post('/unload', async (req, res) => {
       return res.status(400).json({ error: 'Missing character header' })
     }
 
-    console.log(`[Unload] Unloading session ${sessionKey} for character ${characterId}`)
-
     const inworldApp = characterPool.getCharacter(characterId)
 
     if (!inworldApp) {
@@ -287,8 +289,6 @@ app.post('/unload', async (req, res) => {
 
     characterPool.removeSession(characterId, sessionKey)
 
-    console.log(`[Unload] Session ${sessionKey} unloaded`)
-
     res.status(200).json({
       success: true,
       sessionKey,
@@ -298,6 +298,108 @@ app.post('/unload', async (req, res) => {
     console.error('[Unload] Error unloading session:', error)
     res.status(500).json({
       error: 'Failed to unload session',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
+// Text input endpoint - Accepts pre-transcribed text from Workers AI
+app.post('/text', async (req, res) => {
+  try {
+    const { text } = req.body as { text: string }
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid text' })
+    }
+
+    // Extract session data from headers
+    const sessionKey = req.headers['x-session-key'] as string
+    const characterId = req.headers['x-character-id'] as string
+    const userId = req.headers['x-user-id'] as string
+
+    if (!sessionKey || !characterId || !userId) {
+      return res.status(400).json({ error: 'Missing required headers' })
+    }
+
+    // Get character instance
+    const inworldApp = characterPool.getCharacter(characterId)
+
+    if (!inworldApp) {
+      return res.status(404).json({
+        error: 'Character not found',
+        message: 'Character not loaded. Call /load first.'
+      })
+    }
+
+    // Check if session exists
+    if (!inworldApp.connections[sessionKey]) {
+      return res.status(404).json({
+        error: 'Session not found',
+        message: 'Session not initialized. Call /load first.'
+      })
+    }
+
+    console.log(`[Text Input] Processing text for session ${sessionKey}:`, text.substring(0, 100))
+
+    // Get the connection for this session
+    const connection = inworldApp.connections[sessionKey]
+
+    // Create a text input for the graph
+    const { v4: uuidv4 } = require('uuid')
+    const interactionId = uuidv4()
+
+    const textInput = {
+      text,
+      interactionId,
+      key: sessionKey,
+    }
+
+    try {
+      // Send NEW_INTERACTION event to client
+      if (connection.ws) {
+        connection.ws.send(
+          JSON.stringify({
+            type: 'NEW_INTERACTION',
+            interactionId,
+            timestamp: Date.now(),
+          })
+        )
+      }
+
+      // Execute the text input graph
+      const { outputStream } = inworldApp.graphWithTextInput.graph.start(textInput)
+
+      // Process the output stream
+      for await (const output of outputStream) {
+        // Send output to client via WebSocket if connected
+        if (connection.ws && connection.ws.readyState === 1) {
+          // WebSocket.OPEN = 1
+          // Handle different output types (text, audio, etc.)
+          if (output) {
+            connection.ws.send(JSON.stringify(output))
+          }
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        sessionKey,
+        textLength: text.length,
+        interactionId,
+        message: 'Text sent to agent successfully',
+      })
+    } catch (error) {
+      console.error('[Text Input] Failed to send text to Inworld:', error)
+
+      res.status(500).json({
+        error: 'Failed to process text',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  } catch (error) {
+    console.error('[Text Input] Error:', error)
+    res.status(500).json({
+      error: 'Failed to process text input',
       message: error instanceof Error ? error.message : 'Unknown error',
     })
   }
@@ -347,21 +449,26 @@ app.use(
 )
 
 // Start server
-server.listen(WS_APP_PORT, async () => {
-  console.log(`✓ Multi-Tenant Voice Agent Server`)
-  console.log(`✓ Port: ${WS_APP_PORT}`)
-  console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`✓ Max Sessions: 100`)
-  console.log(`✓ WebSocket endpoint: ws://localhost:${WS_APP_PORT}/session`)
-})
+try {
+  server.listen(WS_APP_PORT, async () => {
+    console.log(`Multi-Tenant Voice Agent Server started on port ${WS_APP_PORT}`)
+  })
+
+  server.on('error', (error) => {
+    console.error('Server startup error:', error)
+    process.exit(1)
+  })
+} catch (error) {
+  console.error('Fatal startup error:', error)
+  process.exit(1)
+}
 
 // Graceful shutdown handler
 function shutdown(signal: string) {
-  console.log(`\n[Shutdown] Received ${signal}, shutting down gracefully...`)
+  console.log(`Received ${signal}, shutting down...`)
 
-  // Stop accepting new connections
   server.close(() => {
-    console.log('[Shutdown] HTTP server closed')
+    console.log('HTTP server closed')
   })
 
   // Close all WebSocket connections
@@ -376,17 +483,17 @@ function shutdown(signal: string) {
   characterPool
     .shutdown()
     .then(() => {
-      console.log('[Shutdown] Character pool shutdown complete')
+      console.log('Shutdown complete')
       process.exit(0)
     })
     .catch((error) => {
-      console.error('[Shutdown] Error during shutdown:', error)
+      console.error('Shutdown error:', error)
       process.exit(1)
     })
 
   // Force shutdown after 10 seconds
   setTimeout(() => {
-    console.error('[Shutdown] Forced shutdown after timeout')
+    console.error('Forced shutdown after timeout')
     process.exit(1)
   }, 10000)
 }
@@ -398,16 +505,7 @@ process.on('SIGUSR2', () => shutdown('SIGUSR2'))
 
 // Unhandled rejection handler
 process.on('unhandledRejection', (err: Error) => {
-  if (err instanceof InworldError) {
-    console.error('[UnhandledRejection] Inworld Error:', {
-      message: err.message,
-      context: err.context,
-    })
-  } else {
-    console.error('[UnhandledRejection]:', err)
-  }
-
-  // Don't exit in production, just log
+  console.error('Unhandled rejection:', err)
   if (process.env.NODE_ENV !== 'production') {
     process.exit(1)
   }
@@ -415,6 +513,6 @@ process.on('unhandledRejection', (err: Error) => {
 
 // Uncaught exception handler
 process.on('uncaughtException', (err: Error) => {
-  console.error('[UncaughtException]:', err)
+  console.error('Uncaught exception:', err)
   process.exit(1)
 })

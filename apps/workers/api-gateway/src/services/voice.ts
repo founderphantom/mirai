@@ -124,20 +124,23 @@ export class VoiceSessionService {
    * Start a new voice session
    */
   async startSession(userId: string, characterId: string) {
-    // 1. Verify character ownership
+    // 1. Verify character access (either owned by user OR is a preset)
     const character = await this.db
       .select()
       .from(characters)
-      .where(
-        and(
-          eq(characters.id, characterId),
-          eq(characters.userId, userId),
-        ),
-      )
+      .where(eq(characters.id, characterId))
       .limit(1)
 
     if (!character.length) {
       throw new Error('Character not found')
+    }
+
+    // Verify user has access to this character
+    const isOwned = character[0].userId === userId
+    const isPreset = character[0].isPreset === true
+
+    if (!isOwned && !isPreset) {
+      throw new Error('You do not have access to this character')
     }
 
     // 2. Create conversation record
@@ -159,6 +162,7 @@ export class VoiceSessionService {
       userId,
       characterId,
       inworldCharacterId: character[0].inworldCharacterId,
+      inworldApiKey: this.env.INWORLD_API_KEY,
       agentConfig: character[0].personalityConfig,
       createdAt: Date.now(),
       expiresAt: Date.now() + 300000, // 5 minutes
@@ -172,7 +176,16 @@ export class VoiceSessionService {
     )
 
     // 5. Store session in D1
-    const websocketUrl = `wss://${this.env.BETTER_AUTH_URL.replace(/^https?:\/\//, '')}/api/voice/ws?sessionKey=${sessionKey}`
+    // Use unified domain with service binding for LOWEST latency
+    // Flow: Client → stage-web (public) → Voice Agent (service binding) → Container
+    // Latency: ~50ms initial (public) + ~0.5-2ms (service binding) = ~50-52ms total
+    // vs Direct: ~50ms (public) + ~50ms (public) = ~100ms total
+    // Savings: ~45-50ms on initial connection + ~3-8ms per message
+    const websocketUrl = `wss://miraichat.app/ws?sessionKey=${sessionKey}`
+
+    // Fallback URLs (for testing different routing):
+    // Direct Voice Worker:  wss://voice.miraichat.app/ws?sessionKey=${sessionKey}
+    // Via API Gateway:      wss://api.miraichat.app/api/voice/ws?sessionKey=${sessionKey}
 
     const newSession: NewVoiceSession = {
       id: sessionKey,
@@ -253,9 +266,10 @@ export class VoiceSessionService {
       .where(eq(conversations.id, session.conversationId))
 
     // Track usage for billing
-    if (metrics?.audioSeconds) {
-      await this.trackUsage(userId, session.conversationId, metrics.audioSeconds)
-    }
+    // Always track usage, even if 0 seconds (for record-keeping and debugging)
+    const audioSeconds = metrics?.audioSeconds ?? 0
+    console.log(`[VOICE_SERVICE] Tracking usage for session ${sessionId}: ${audioSeconds} seconds`)
+    await this.trackUsage(userId, session.conversationId, audioSeconds)
 
     return { success: true }
   }
@@ -290,6 +304,14 @@ export class VoiceSessionService {
     const eventId = crypto.randomUUID()
     const minutes = Math.ceil(audioSeconds / 60)
 
+    console.log(`[VOICE_SERVICE] Creating usage event:`, {
+      userId,
+      conversationId,
+      audioSeconds,
+      minutes,
+      eventId,
+    })
+
     await this.db.insert(usageEvents).values({
       id: eventId,
       userId,
@@ -300,7 +322,8 @@ export class VoiceSessionService {
       polarSynced: false,
     })
 
+    console.log(`[VOICE_SERVICE] Successfully tracked ${minutes} voice minutes for user ${userId} (${audioSeconds}s audio)`)
+
     // TODO: Report to Polar API (async, non-blocking)
-    console.log(`[USAGE] Tracked ${minutes} voice minutes for user ${userId}`)
   }
 }

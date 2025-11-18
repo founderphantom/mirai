@@ -21,9 +21,10 @@ import * as schema from '@proj-airi/database-schema'
 export function createAuth(env: Env) {
   const db = drizzle(env.DB, { schema })
 
-  // Initialize Polar client
+  // Initialize Polar client (using sandbox for testing)
   const polarClient = new Polar({
-    accessToken: env.POLAR_ACCESS_TOKEN,
+    accessToken: env.POLAR_SANDBOX_ACCESS_TOKEN,
+    server: 'sandbox', // Required: Routes API calls to https://sandbox-api.polar.sh
   })
 
   return betterAuth({
@@ -43,9 +44,16 @@ export function createAuth(env: Env) {
       'https://mirai-api-gateway.founder-968.workers.dev',
       'https://miraichat.app',
       'https://www.miraichat.app',
+      'https://api.miraichat.app',
       'http://localhost:3000',
       'http://localhost:5173',
+      'http://localhost:4337',
+      'http://localhost:8787', // Local stage-web (wrangler dev)
     ],
+    advanced: {
+      // Redirect to frontend URL after OAuth, not API URL
+      defaultRedirectURL: env.FRONTEND_URL,
+    },
 
     // Email & Password Authentication
     emailAndPassword: {
@@ -211,13 +219,15 @@ export function createAuth(env: Env) {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         scope: ['email', 'profile'],
-        redirectURI: 'https://mirai-stage-web.founder-968.workers.dev/api/auth/callback/google',
+        // Use BETTER_AUTH_URL so it works in both dev and production
+        redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/google`,
       },
       discord: {
         clientId: env.DISCORD_CLIENT_ID,
         clientSecret: env.DISCORD_CLIENT_SECRET,
         scope: ['identify', 'email'],
-        redirectURI: 'https://mirai-stage-web.founder-968.workers.dev/api/auth/callback/discord',
+        // Use BETTER_AUTH_URL so it works in both dev and production
+        redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/discord`,
       },
     },
 
@@ -283,12 +293,13 @@ export function createAuth(env: Env) {
         createCustomerOnSignUp: true,
         use: [
           checkout({
-            organizationId: env.POLAR_ORGANIZATION_ID,
+            // Note: Products and successUrl will be provided when calling checkout from client
+            // organizationId is passed as referenceId during client-side checkout call
           }),
           portal(),
           usage(),
           webhooks({
-            secret: env.POLAR_WEBHOOK_SECRET,
+            secret: env.POLAR_SANDBOX_WEBHOOK_SECRET,
           }),
         ],
       }),
