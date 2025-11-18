@@ -653,16 +653,34 @@ export class WorkersAIStreamClient {
       // Handle different Inworld Runtime message types
       switch (message.type) {
         case 'TEXT':
-          // Character text response
+          // Handle TEXT messages from voice agent (both user transcripts and character responses)
           if (message.text) {
-            console.log('[WorkersAI] Character text:', message.text)
-            this.callbacks.onTranscript?.(message.text, 'CHARACTER')
+            // Check routing.source to distinguish user vs character messages
+            const isUser = message.routing?.source?.isUser === true
+
+            // Determine speaker based on routing flags
+            const speaker = isUser ? 'USER' : 'CHARACTER'
+
+            console.log(`[WorkersAI] ${speaker} message:`, message.text)
+
+            this.callbacks.onTranscript?.(message.text, speaker)
           }
           break
 
         case 'AUDIO':
-          // This shouldn't happen - audio should be binary
-          console.warn('[WorkersAI] Received audio as JSON (unexpected)')
+          // Handle AUDIO messages from voice agent (TTS audio chunks)
+          if (message.audio?.chunk) {
+            try {
+              // Decode base64 WAV audio to ArrayBuffer
+              const audioBuffer = this.base64ToArrayBuffer(message.audio.chunk)
+              console.log('[WorkersAI] Decoded audio chunk:', audioBuffer.byteLength, 'bytes')
+              await this.playAudio(audioBuffer)
+            } catch (error) {
+              console.error('[WorkersAI] Failed to decode/play TTS audio:', error)
+            }
+          } else {
+            console.warn('[WorkersAI] AUDIO message missing audio.chunk:', message)
+          }
           break
 
         case 'EMOTION':
@@ -812,6 +830,18 @@ export class WorkersAIStreamClient {
     }
 
     return new Uint8Array(buffer)
+  }
+
+  /**
+   * Convert base64 string to ArrayBuffer
+   */
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return bytes.buffer
   }
 
   /**
