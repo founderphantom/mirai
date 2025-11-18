@@ -11,6 +11,7 @@
 import 'dotenv/config'
 
 import { InworldError } from '@inworld/runtime/common'
+import { GraphTypes } from '@inworld/runtime/graph'
 import cors from 'cors'
 import express from 'express'
 import { createServer } from 'http'
@@ -20,7 +21,10 @@ import { RawData, WebSocketServer } from 'ws'
 import { WS_APP_PORT } from './constants'
 import { CharacterPoolManager } from './middleware/CharacterPoolManager'
 import { MessageHandler } from './components/message_handler'
+import { EventFactory } from './components/event_factory'
 import type { Agent } from './types'
+
+const WavEncoder = require('wav-encoder')
 
 const app = express()
 const server = createServer(app)
@@ -369,17 +373,55 @@ app.post('/text', async (req, res) => {
       // Execute the text input graph
       const { outputStream } = inworldApp.graphWithTextInput.graph.start(textInput)
 
-      // Process the output stream
-      for await (const output of outputStream) {
-        // Send output to client via WebSocket if connected
-        if (connection.ws && connection.ws.readyState === 1) {
-          // WebSocket.OPEN = 1
-          // Handle different output types (text, audio, etc.)
-          if (output) {
-            connection.ws.send(JSON.stringify(output))
+      // Process the output stream properly (same pattern as MessageHandler)
+      const result = await outputStream.next()
+
+      await result.processResponse({
+        TTSOutputStream: async (ttsStream: GraphTypes.TTSOutputStream) => {
+          let chunkCount = 0
+          for await (const chunk of ttsStream) {
+            chunkCount++
+
+            // Encode audio to WAV format
+            const audioBuffer = await WavEncoder.encode({
+              sampleRate: chunk.audio.sampleRate,
+              channelData: [new Float32Array(chunk.audio.data)],
+            })
+
+            // Create text packet
+            const textPacket = EventFactory.text(chunk.text, interactionId, {
+              isAgent: true,
+              name: connection.state.agent.id,
+            })
+
+            console.log(`[Text Input] Sending TTS chunk #${chunkCount}: "${chunk.text}" (${chunk.audio.data.length} samples)`)
+
+            // Send text and audio to client via WebSocket if connected
+            if (connection.ws && connection.ws.readyState === 1) {
+              connection.ws.send(JSON.stringify(textPacket))
+              connection.ws.send(
+                JSON.stringify(
+                  EventFactory.audio(
+                    Buffer.from(audioBuffer).toString('base64'),
+                    interactionId,
+                    textPacket.packetId.utteranceId,
+                  )
+                )
+              )
+            }
           }
-        }
+        },
+      })
+
+      // Send interaction end event
+      if (connection.ws && connection.ws.readyState === 1) {
+        connection.ws.send(
+          JSON.stringify(EventFactory.interactionEnd(interactionId))
+        )
       }
+
+      // Close the graph execution
+      inworldApp.graphWithTextInput.graph.closeExecution(outputStream)
 
       res.status(200).json({
         success: true,

@@ -10,7 +10,8 @@ export class EventFactory {
 
     return {
       type: 'TEXT',
-      text: { text, final: true },
+      text: text,
+      final: true,
       date,
       packetId: { utteranceId: v4(), interactionId },
       routing: { source },
