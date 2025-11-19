@@ -39,7 +39,7 @@ VITE_ENVIRONMENT = "production"
 # This provides the lowest possible latency for real-time voice streaming
 VITE_API_URL = "https://miraichat.app"
 VITE_WS_URL = "wss://miraichat.app"
-VITE_AIRI_WS_URL = ""
+VITE_AIRI_WS_URL = "wss://miraichat.app"
 LOG_LEVEL = "info"
 
 # R2 Bucket for large assets

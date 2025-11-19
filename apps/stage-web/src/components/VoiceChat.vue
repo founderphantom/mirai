@@ -270,7 +270,7 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
     console.log('[VoiceChat] Browser closing, tracking usage with keepalive fetch:', metrics)
 
     // Use fetch with keepalive flag - supports credentials and completes after page unload
-    const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin
+    const API_BASE_URL = import.meta.env.VITE_API_URL
 
     // Synchronous request that will complete even if page closes
     fetch(`${API_BASE_URL}/api/voice/session/${sessionKey.value}/end`, {

@@ -14,7 +14,7 @@ import type { Session } from 'better-auth/types'
 // In production: Points to api.miraichat.app for direct connection
 // In development: Points to localhost:4337 for local api-gateway
 const client = createAuthClient({
-  baseURL: import.meta.env.VITE_API_URL || window.location.origin,
+  baseURL: import.meta.env.VITE_API_URL,
   fetchOptions: {
     credentials: 'include', // Include cookies for session management
   },
