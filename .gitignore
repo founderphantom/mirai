@@ -21,6 +21,10 @@ lerna-debug.log*
 # Anything .local, especially for .env.local
 *.local
 
+# Environment files (only .env.example and .env.production should be tracked)
+.env
+.env.development
+
 # Audio binaries
 *.pcm
 *.wav
