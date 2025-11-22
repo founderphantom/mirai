@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted, onMounted, computed, watch } from 'vue'
+import { ref, onUnmounted, onMounted, computed, watch, nextTick } from 'vue'
 import { VoiceSessionManager, type QuotaError } from '@/services/voice/VoiceSessionManager'
 import { WorkersAIStreamClient } from '@/services/voice/WorkersAIStreamClient'
 import type { Character } from '@/services/api/characters'
@@ -68,11 +68,67 @@ async function startSession() {
     // 2. Connect to WebSocket using Workers AI endpoint
     voiceClient.value = new WorkersAIStreamClient({
       onTranscript: (text: string, speaker: string) => {
+        // For USER messages, check if this is a duplicate from Flux STT
+        // (Flux already sent this via onSubtitle, so we skip duplicates)
+        if (speaker === 'USER') {
+          const lastMsg = messages.value[messages.value.length - 1]
+          // Skip if last message is from USER and has the same text (duplicate from Flux)
+          if (lastMsg && lastMsg.speaker === 'USER' && lastMsg.text === text) {
+            console.log('[VoiceChat] Skipping duplicate USER transcript from onTranscript')
+            return
+          }
+        }
+
+        // Add message (CHARACTER messages, or non-duplicate USER messages)
         messages.value.push({
           speaker,
           text,
           timestamp: Date.now(),
         })
+      },
+      onSubtitle: (text: string, isPartial: boolean) => {
+        // Handle real-time partial transcriptions from Flux STT
+        // Update the last USER message if it's partial, otherwise add a new one
+        if (isPartial) {
+          // Find the last message from USER (if any)
+          const lastUserMsgIndex = messages.value.findLastIndex(msg => msg.speaker === 'USER')
+
+          if (lastUserMsgIndex !== -1 && messages.value[lastUserMsgIndex].text.startsWith('[...')) {
+            // Update existing partial message
+            messages.value[lastUserMsgIndex].text = `[...] ${text}`
+            messages.value[lastUserMsgIndex].timestamp = Date.now()
+          } else {
+            // Add new partial message
+            messages.value.push({
+              speaker: 'USER',
+              text: `[...] ${text}`,
+              timestamp: Date.now(),
+            })
+          }
+        } else {
+          // Non-partial subtitle - this is a final transcription
+          // Remove any existing partial message and add the final one
+          const lastUserMsgIndex = messages.value.findLastIndex(msg => msg.speaker === 'USER')
+
+          // Strip [...] prefix from final message text
+          const cleanText = text.replace(/^\[...\]\s*/, '')
+
+          // Check if last message is partial - remove it
+          if (lastUserMsgIndex !== -1 && messages.value[lastUserMsgIndex].text.startsWith('[...')) {
+            messages.value.splice(lastUserMsgIndex, 1)
+          }
+          // Check if last message is already this final message (prevent EagerEndOfTurn + EndOfTurn duplicates)
+          else if (lastUserMsgIndex !== -1 && messages.value[lastUserMsgIndex].text === cleanText) {
+            console.log('[VoiceChat] Skipping duplicate final USER message from Flux')
+            return
+          }
+
+          messages.value.push({
+            speaker: 'USER',
+            text: cleanText,
+            timestamp: Date.now(),
+          })
+        }
       },
       onEmotion: (emotion: string, intensity: number) => {
         currentEmotion.value = { emotion, intensity }
@@ -319,11 +375,9 @@ function scrollToBottom() {
 
 // Watch messages and auto-scroll
 watch(messages, () => {
-  // Use nextTick to ensure DOM has updated
-  import('vue').then(({ nextTick }) => {
-    nextTick(() => scrollToBottom())
-  })
-})
+  // Use nextTick to ensure DOM has updated before scrolling
+  nextTick(() => scrollToBottom())
+}, { deep: true })
 </script>
 
 <template>

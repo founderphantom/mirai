@@ -13,7 +13,7 @@ export const PRE_ROLL_MS = 700; // Add tolerance for clipping of the beginning o
 export const FRAME_PER_BUFFER = 1024;
 export const SPEECH_THRESHOLD = 0.8;
 export const TEXT_CONFIG = {
-  maxNewTokens: 100, // 75 words
+  maxNewTokens: 50, // ~35-40 words for more natural, concise conversation
   maxPromptLength: 1000,
   repetitionPenalty: 1,
   topP: 0.5,

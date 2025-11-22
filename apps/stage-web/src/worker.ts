@@ -222,6 +222,9 @@ export default {
           const success = await audioService.sendToVoiceAgent(text)
 
           if (!success) {
+            console.error('[AUDIO_STREAM] Failed to send transcription, closing connection for recovery')
+
+            // Send error to client
             server.send(
               JSON.stringify({
                 type: 'error',
@@ -229,6 +232,10 @@ export default {
                 timestamp: Date.now(),
               }),
             )
+
+            // Clean up and close connection to force client reconnection
+            audioService.cleanup()
+            server.close(1011, 'Failed to send transcription to voice agent')
           }
         })
 

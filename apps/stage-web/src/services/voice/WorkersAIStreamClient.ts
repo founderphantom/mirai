@@ -82,6 +82,7 @@ export interface WorkersAIStreamCallbacks {
   onVADUpdate?: (isComplete: boolean, probability: number) => void
   onTranscriptionComplete?: (text: string) => void
   onAgentResponse?: (data: any) => void
+  onLipSync?: (mouthOpenSize: number) => void
 }
 
 // Flux WebSocket event types (Flux uses 'event' field, not 'type')
@@ -109,9 +110,14 @@ export class WorkersAIStreamClient {
   private audioBuffer: Uint8Array[] = []
   private sendInterval: NodeJS.Timeout | null = null
   private pingInterval: NodeJS.Timeout | null = null
+  private audioChunksSent = 0
 
   // Audio playback queue to prevent overlapping
   private audioQueue: ArrayBuffer[] = []
+
+  // Character message accumulation (for streaming TTS text chunks)
+  private currentCharacterInteraction: string | null = null
+  private currentCharacterMessage: string = ''
   private isPlayingAudio = false
 
   // Gapless playback with crossfade
@@ -123,6 +129,10 @@ export class WorkersAIStreamClient {
   // Current subtitle state
   private currentSubtitle = ''
   private isPartialSubtitle = false
+
+  // Lip sync analysis
+  private lipSyncAnalyser: AnalyserNode | null = null
+  private lipSyncAnimationId: number | null = null
 
   constructor(private callbacks: WorkersAIStreamCallbacks) {}
 
@@ -338,7 +348,6 @@ export class WorkersAIStreamClient {
 
       // Send audio chunks immediately (real-time streaming)
       // Send to BOTH audio-stream (VAD) AND flux (STT)
-      let audioChunksSent = 0
       this.sendInterval = setInterval(() => {
         if (this.audioBuffer.length > 0 &&
             this.audioStreamWs?.readyState === WebSocket.OPEN &&
@@ -348,15 +357,10 @@ export class WorkersAIStreamClient {
             for (const chunk of this.audioBuffer) {
               this.audioStreamWs.send(chunk.buffer) // VAD processing
               this.fluxWs.send(chunk.buffer) // STT processing
-              audioChunksSent++
+              this.audioChunksSent++
             }
 
-            // Log first few chunks for debugging
-            if (audioChunksSent <= 5) {
-              console.log(`[WorkersAI] Sent ${this.audioBuffer.length} audio chunks to both VAD and Flux (total: ${audioChunksSent})`)
-            }
-
-            // Clear buffer after sending
+            // Clear buffer after sending (no logging to reduce console noise)
             this.audioBuffer = []
           } catch (error) {
             console.error('[WorkersAI] Failed to send audio:', error)
@@ -524,7 +528,16 @@ export class WorkersAIStreamClient {
     try {
       const event: FluxEvent = JSON.parse(data)
 
-      console.log('[WorkersAI] Flux event:', event.event, event.transcript?.substring(0, 50))
+      // Check if event field exists
+      if (!event.event) {
+        console.warn('[WorkersAI] Flux message missing event field:', data)
+        return
+      }
+
+      // Only log significant events (not every Update event)
+      if (event.event !== 'Update') {
+        console.log('[WorkersAI] Flux event:', event.event, event.transcript?.substring(0, 50))
+      }
 
       switch (event.event) {
         case 'StartOfTurn':
@@ -535,9 +548,8 @@ export class WorkersAIStreamClient {
           break
 
         case 'Update':
-          // Partial transcription - update subtitle in real-time
+          // Partial transcription - update subtitle in real-time (don't log every update)
           if (event.transcript) {
-            console.log('[WorkersAI] Flux partial transcription:', event.transcript)
             this.currentSubtitle = event.transcript
             this.isPartialSubtitle = true
             this.callbacks.onSubtitle?.(event.transcript, true)
@@ -559,9 +571,12 @@ export class WorkersAIStreamClient {
           if (event.transcript) {
             console.log('[WorkersAI] Flux final transcription:', event.transcript)
 
-            // Clear subtitle
+            // Clear subtitle and send final transcription to UI
             this.currentSubtitle = ''
             this.isPartialSubtitle = false
+
+            // Call onSubtitle with final transcription to clean up partial messages
+            this.callbacks.onSubtitle?.(event.transcript, false)
 
             // Forward to audio-stream WebSocket so worker can send to voice agent
             if (this.audioStreamWs && this.audioStreamWs.readyState === WebSocket.OPEN) {
@@ -571,9 +586,7 @@ export class WorkersAIStreamClient {
               }))
             }
 
-            // Also call callbacks for compatibility
             this.callbacks.onTranscriptionComplete?.(event.transcript)
-            this.callbacks.onTranscript?.(event.transcript, 'USER')
           }
           break
 
@@ -600,14 +613,14 @@ export class WorkersAIStreamClient {
     try {
       const message: WorkersAIMessage = JSON.parse(data)
 
-      console.log('[WorkersAI] Audio stream message:', message.type)
+      // Only log non-VAD messages to reduce console noise
+      if (message.type !== 'vad') {
+        console.log('[WorkersAI] Audio stream message:', message.type)
+      }
 
       switch (message.type) {
         case 'vad':
-          console.log('[WorkersAI] VAD status:', {
-            complete: message.is_complete,
-            probability: message.probability,
-          })
+          // VAD status updates happen very frequently - don't log them
           this.callbacks.onVADUpdate?.(message.is_complete, message.probability)
           break
 
@@ -639,7 +652,7 @@ export class WorkersAIStreamClient {
   private async handleAgentMessage(data: ArrayBuffer | string): Promise<void> {
     // Binary data = audio from TTS
     if (data instanceof ArrayBuffer) {
-      console.log('[WorkersAI] Received audio from agent:', data.byteLength, 'bytes')
+      // Don't log every audio chunk received (too noisy)
       await this.playAudio(data)
       return
     }
@@ -648,22 +661,50 @@ export class WorkersAIStreamClient {
     try {
       const message = JSON.parse(data)
 
-      console.log('[WorkersAI] Agent message:', message.type || 'unknown')
+      // Only log significant message types (not TEXT/AUDIO which are very frequent)
+      if (message.type !== 'TEXT' && message.type !== 'AUDIO') {
+        console.log('[WorkersAI] Agent message:', message.type || 'unknown')
+      }
 
       // Handle different Inworld Runtime message types
       switch (message.type) {
         case 'TEXT':
-          // Handle TEXT messages from voice agent (both user transcripts and character responses)
+          // Handle TEXT messages from voice agent (character responses only)
+          // NOTE: User transcripts are handled by Flux STT (handleFluxMessage)
+          // The agent echoes back user messages, but we ignore them to prevent duplicates
           if (message.text) {
             // Check routing.source to distinguish user vs character messages
             const isUser = message.routing?.source?.isUser === true
 
-            // Determine speaker based on routing flags
-            const speaker = isUser ? 'USER' : 'CHARACTER'
+            if (!isUser) {
+              // Accumulate CHARACTER message chunks for the same interaction
+              const interactionId = message.packetId?.interactionId
 
-            console.log(`[WorkersAI] ${speaker} message:`, message.text)
+              if (interactionId) {
+                // Check if this is a new interaction
+                if (this.currentCharacterInteraction !== interactionId) {
+                  // Flush previous interaction if exists
+                  if (this.currentCharacterMessage) {
+                    console.log('[WorkersAI] Final CHARACTER message:', this.currentCharacterMessage)
+                    this.callbacks.onTranscript?.(this.currentCharacterMessage, 'CHARACTER')
+                  }
 
-            this.callbacks.onTranscript?.(message.text, speaker)
+                  // Start new interaction
+                  this.currentCharacterInteraction = interactionId
+                  this.currentCharacterMessage = message.text
+                } else {
+                  // Accumulate text for current interaction (don't log each chunk)
+                  this.currentCharacterMessage += message.text
+                }
+              } else {
+                // Fallback if no interactionId - send immediately
+                console.log('[WorkersAI] CHARACTER message (no interactionId):', message.text)
+                this.callbacks.onTranscript?.(message.text, 'CHARACTER')
+              }
+            } else {
+              // Log but don't display user messages (already shown by Flux STT)
+              console.log('[WorkersAI] Ignoring echoed USER message from agent:', message.text)
+            }
           }
           break
 
@@ -671,9 +712,8 @@ export class WorkersAIStreamClient {
           // Handle AUDIO messages from voice agent (TTS audio chunks)
           if (message.audio?.chunk) {
             try {
-              // Decode base64 WAV audio to ArrayBuffer
+              // Decode base64 WAV audio to ArrayBuffer (don't log each chunk)
               const audioBuffer = this.base64ToArrayBuffer(message.audio.chunk)
-              console.log('[WorkersAI] Decoded audio chunk:', audioBuffer.byteLength, 'bytes')
               await this.playAudio(audioBuffer)
             } catch (error) {
               console.error('[WorkersAI] Failed to decode/play TTS audio:', error)
@@ -692,11 +732,17 @@ export class WorkersAIStreamClient {
           break
 
         case 'INTERACTION_END':
-          console.log('[WorkersAI] Interaction ended')
+          // Flush accumulated CHARACTER message (don't log interaction end)
+          if (this.currentCharacterMessage) {
+            console.log('[WorkersAI] Final CHARACTER message:', this.currentCharacterMessage)
+            this.callbacks.onTranscript?.(this.currentCharacterMessage, 'CHARACTER')
+            this.currentCharacterMessage = ''
+            this.currentCharacterInteraction = null
+          }
           break
 
         case 'NEW_INTERACTION':
-          console.log('[WorkersAI] New interaction started:', message.interactionId)
+          console.log('[WorkersAI] New interaction:', message.interactionId)
           break
 
         case 'ERROR':

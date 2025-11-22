@@ -376,11 +376,21 @@ app.post('/text', async (req, res) => {
       // Process the output stream properly (same pattern as MessageHandler)
       const result = await outputStream.next()
 
+      // Create response message to accumulate assistant's reply
+      const responseMessage = {
+        role: 'assistant' as const,
+        content: '',
+        id: interactionId,
+      }
+
       await result.processResponse({
         TTSOutputStream: async (ttsStream: GraphTypes.TTSOutputStream) => {
           let chunkCount = 0
           for await (const chunk of ttsStream) {
             chunkCount++
+
+            // Accumulate response text for conversation memory
+            responseMessage.content += chunk.text
 
             // Encode audio to WAV format
             const audioBuffer = await WavEncoder.encode({
@@ -410,6 +420,18 @@ app.post('/text', async (req, res) => {
               )
             }
           }
+
+          // Save assistant response to conversation state for memory
+          const existingMessage = connection.state.messages.find(
+            (m) => m.id === interactionId && m.role === 'assistant',
+          )
+          if (existingMessage) {
+            existingMessage.content = responseMessage.content
+          } else {
+            connection.state.messages.push(responseMessage)
+          }
+
+          console.log(`[Text Input] Saved assistant response to memory: "${responseMessage.content}"`)
         },
       })
 

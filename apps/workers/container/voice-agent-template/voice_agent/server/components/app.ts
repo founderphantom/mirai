@@ -134,11 +134,35 @@ export class InworldApp {
       const flaws = agent.flaws?.join(', ') || 'None specified';
       const adjectives = agent.adjectives?.join(', ') || 'Friendly';
 
-      return `Your persona is: "${agent.dialogueStyle}". Your motivations are: ${motivations}. Your flaws are: ${flaws}. Your personality traits: ${adjectives}.`;
+      return `Your persona is: "${agent.dialogueStyle}". Your motivations are: ${motivations}. Your flaws are: ${flaws}. Your personality traits: ${adjectives}.
+
+IMPORTANT CONVERSATION STYLE:
+- Keep responses SHORT and NATURAL (1-2 sentences typically)
+- Match the user's energy and length - brief for brief, detailed for detailed
+- This is spoken dialogue, not writing - be conversational and concise
+- Only give longer explanations when the user specifically asks for details or complex topics require it
+- Avoid unnecessary elaboration - get to the point naturally
+
+IMPORTANT CONTINUITY:
+- This is an ongoing conversation. Do not re-introduce yourself or repeat your introduction
+- Continue naturally from where the conversation left off
+- Remember what was previously discussed and maintain conversation continuity`;
     }
 
     // Fallback to legacy Agent format for backward compatibility
-    return `You are: "${agent.name}". Your persona is: "${agent.description}". Your motivation is: "${agent.motivation}".`;
+    return `You are: "${agent.name}". Your persona is: "${agent.description}". Your motivation is: "${agent.motivation}".
+
+IMPORTANT CONVERSATION STYLE:
+- Keep responses SHORT and NATURAL (1-2 sentences typically)
+- Match the user's energy and length - brief for brief, detailed for detailed
+- This is spoken dialogue, not writing - be conversational and concise
+- Only give longer explanations when the user specifically asks for details or complex topics require it
+- Avoid unnecessary elaboration - get to the point naturally
+
+IMPORTANT CONTINUITY:
+- This is an ongoing conversation. Do not re-introduce yourself or repeat your introduction
+- Continue naturally from where the conversation left off
+- Remember what was previously discussed and maintain conversation continuity`;
   }
 
   unload(req: any, res: any) {
